@@ -24,11 +24,12 @@ from shift_assistant.domain.eligibility import (
 )
 from shift_assistant.domain.models import COMPACT_JURISDICTION, CredentialType
 from shift_assistant.reliability.reporting import plural, shortlist_phrase
-from shift_assistant.rendering import describe_shift
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.retrieval.embedder import Embedder, create_embedder
+from shift_assistant.retrieval.knowledge import GLOBAL_SCOPE
 from shift_assistant.review import DraftStatus, OutreachReview
 from shift_assistant.tools.outreach import format_local_datetime, unit_label
+from shift_assistant.tools.schemas import PolicyExcerpt, ShiftSummary
 
 EXAMPLES = {
     "ICU night shift": (
@@ -85,6 +86,17 @@ MODE_LABELS = {
     ),
 }
 
+# Coordinator-facing wording for verification issues; the raw messages stay in Technical details.
+ISSUE_ACTIONS = {
+    "INCOMPLETE_VETTING": "Some candidates in the pool were not compliance-checked, so a better "
+    "match may exist.",
+    "UNKNOWN_CITATION": "A source was removed from a rationale because it could not be verified.",
+    "INVALID_DRAFT": "An outreach draft was removed because it could not be verified. Write that "
+    "message manually.",
+}
+REMOVED_RECOMMENDATION = "A recommendation was removed because it failed evidence checks."
+INFORMATIONAL_ISSUES = {"FALLBACK_MODE"}  # already shown as the report mode
+
 CREDENTIAL_LABELS = {
     CredentialStatus.VALID_THROUGH_SHIFT: ("green", "check", "{name} valid through shift"),
     CredentialStatus.EXPIRING_SOON: ("orange", "schedule", "{name} expires {expires}"),
@@ -99,7 +111,9 @@ BLOCKER_LABELS = {
     CheckCode.LICENSE_NOT_VALID_IN_STATE: "{credential} not valid in this state",
 }
 
-APPROVED_MESSAGE = "Draft approved. Delivery simulated; no message sent."
+APPROVE_PROMPT = "Approve this message."
+APPROVED_MESSAGE = "Message approved successfully."
+DEMO_NOTE = "Demo mode: delivery is simulated."
 
 
 @st.cache_resource(show_spinner="Loading the embedding model...")
@@ -127,8 +141,11 @@ def main() -> None:
     render_header()
     request = render_request_form(selected_shift)
     if request is not None:
+        # Drop the previous result first so a failed run never leaves stale results on screen.
+        st.session_state.pop("report", None)
+        st.session_state.pop("review", None)
         new_report = run_with_progress(assistant, request)
-        # A new run replaces the review too, so no approval carries over from an earlier result.
+        # A new run gets a new review, so no approval carries over from an earlier result.
         st.session_state["report"] = new_report
         st.session_state["review"] = OutreachReview.for_report(new_report)
 
@@ -179,9 +196,9 @@ def render_header() -> None:
             "- **Compliance is rule-based.** Licensure, certifications, experience, "
             "double-booking and rest time are checked by deterministic code, never by the model.\n"
             "- **Every claim is verified** against tool evidence before it reaches you "
-            "(see the Verification tab).\n"
+            "(see Technical details).\n"
             "- **Nothing is sent.** A coordinator reviews, edits and approves each outreach "
-            "draft; delivery is simulated in this demo."
+            "message; delivery is simulated in this demo."
         )
 
 
@@ -233,42 +250,27 @@ def render_report(
 ) -> None:
     show, icon, label = STATUS_STYLE[report.status]
     show(f"**{label}:** {status_message(report)}", icon=icon)
+    render_action_items(report)
+    st.markdown(f"**Summary:** {report.summary}")
     color, mode_icon, mode, explanation = MODE_LABELS[report.mode]
     st.markdown(f"**Report mode:** {badge(color, mode_icon, mode)}", help=explanation)
-
-    recommended = len(report.recommendations)
-    positions = str(report.shift.positions_open) if report.shift else "-"
-    coverage = report.coverage
-    cols = st.columns(4)
-    cols[0].metric("Recommended", recommended)
-    cols[1].metric("Excluded", len(report.excluded))
-    cols[2].metric(
-        "Shortlisted / open positions",
-        f"{recommended} / {positions}",
-        help="Shortlisted clinicians have not been contacted, have not accepted, and are not "
-        "booked.",
-    )
-    cols[3].metric(
-        "Total vetted",
-        coverage.evaluated if coverage else 0,
-        help=vetting_note(report),
-    )
-
-    if report.shift:
-        st.markdown(f"**Shift:** {describe_shift(report.shift)}")
-    st.markdown(f"**Summary:** {report.summary}")
-    if report.agent_notes:
-        st.markdown(f"**Agent notes:** {report.agent_notes}")
     if report.clarification_question:
         st.markdown(f"**Question:** {report.clarification_question}")
+    if report.shift:
+        render_shift_overview(report.shift)
+    render_counts(report)
 
-    tabs = st.tabs(["Recommendations", "Alternates", "Excluded", "Verification", "Trace", "JSON"])
-    with tabs[0]:
+    recommendations, alternates, excluded = st.tabs(["Recommendations", "Alternates", "Excluded"])
+    with recommendations:
+        if report.agent_notes:
+            title = "Why these clinicians?" if report.recommendations else "Agent notes"
+            with st.expander(title, icon=":material/psychology:"):
+                st.markdown(report.agent_notes)
         if not report.recommendations:
             st.write("No recommendations.")
         for rec in report.recommendations:
             render_recommendation(rec, review, assistant)
-    with tabs[1]:
+    with alternates:
         if not report.alternates:
             st.write("No eligible alternates.")
         for alt in report.alternates:
@@ -278,7 +280,7 @@ def render_report(
                 credential_badges(alt.credentials),
                 [w.message for w in alt.warnings],
             )
-    with tabs[2]:
+    with excluded:
         if not report.excluded:
             st.write("Nobody was excluded.")
         for blocked in report.excluded:
@@ -288,25 +290,8 @@ def render_report(
                 " ".join(badge("red", "block", blocker_label(r)) for r in blocked.reasons),
                 [r.message for r in blocked.reasons],
             )
-    with tabs[3]:
-        if not report.issues:
-            st.success("All references were verified against tool evidence.")
-        for issue in report.issues:
-            show = st.error if issue.severity is IssueSeverity.ERROR else st.warning
-            show(f"`{issue.code}` {issue.message}")
-    with tabs[4]:
-        st.dataframe([e.model_dump() for e in report.trace], hide_index=True)
-        m = report.metrics
-        cols = st.columns(5)
-        cols[0].metric("LLM calls", m.llm_calls)
-        cols[1].metric("Tool calls", m.tool_calls)
-        cols[2].metric("Input tokens", f"{m.input_tokens:,}")
-        cols[3].metric("Output tokens", f"{m.output_tokens:,}")
-        cols[4].metric("Elapsed time (s)", f"{m.duration_ms / 1000:.1f}")
-    with tabs[5]:
-        payload = report.model_dump_json(indent=2)
-        st.download_button("Download JSON", payload, "staffing_report.json", "application/json")
-        st.json(payload, expanded=False)
+
+    render_technical_details(report)
 
 
 def status_message(report: StaffingReport) -> str:
@@ -323,6 +308,69 @@ def status_message(report: StaffingReport) -> str:
     return f"{message}. Human review required."
 
 
+def render_action_items(report: StaffingReport) -> None:
+    """Verification findings a coordinator should act on, in plain words."""
+    issues = [
+        i
+        for i in report.issues
+        if i.severity is not IssueSeverity.INFO and i.code not in INFORMATIONAL_ISSUES
+    ]
+    if not issues:
+        return
+    actions = dict.fromkeys(
+        REMOVED_RECOMMENDATION
+        if i.severity is IssueSeverity.ERROR
+        else ISSUE_ACTIONS.get(i.code, i.message)
+        for i in issues
+    )
+    alert = st.error if any(i.severity is IssueSeverity.ERROR for i in issues) else st.warning
+    bullets = "\n".join(f"- {action}" for action in actions)
+    alert(f"**Check before contacting anyone:**\n{bullets}\n\nDetails are under Technical details.")
+
+
+def render_shift_overview(shift: ShiftSummary) -> None:
+    with st.container(border=True):
+        st.markdown(f"**Shift overview** :gray[{shift.shift_id}]")
+        where = {
+            "Facility": f"{shift.facility_name}, {shift.location}",
+            "Unit": f"{unit_label(shift.unit)} ({shift.period})",
+            "Open positions": str(shift.positions_open),
+        }
+        when = {
+            "Start": format_local_datetime(shift.start),
+            "End": format_local_datetime(shift.end),  # carries its own date for overnight shifts
+            "Time zone": shift.timezone,
+        }
+        for fields in (where, when):
+            with st.container(horizontal=True, gap="medium"):  # wraps on narrow screens
+                for label, value in fields.items():
+                    st.markdown(f":gray[{label}]  \n**{value}**", width="content")
+
+
+def render_counts(report: StaffingReport) -> None:
+    coverage = report.coverage
+    shortlisted = len(report.recommendations)
+    alternates, excluded = len(report.alternates), len(report.excluded)
+    counts = [
+        (
+            "Shortlisted",
+            shortlisted,
+            "Proposed for human review only: not contacted, not accepted and not booked.",
+        ),
+        ("Alternates", alternates, "Eligible, but not shortlisted."),
+        ("Excluded", excluded, "Failed at least one compliance rule."),
+        (
+            "Evaluated",
+            coverage.evaluated if coverage else shortlisted + alternates + excluded,
+            vetting_note(report),
+        ),
+    ]
+    # A wrapping row: four across on desktop, two per line on a phone.
+    with st.container(horizontal=True, horizontal_alignment="distribute", gap="medium"):
+        for label, value, explanation in counts:
+            st.metric(label, value, help=explanation, width=140)
+
+
 def vetting_note(report: StaffingReport) -> str:
     coverage = report.coverage
     if coverage is None or coverage.pool_size is None:
@@ -332,21 +380,52 @@ def vetting_note(report: StaffingReport) -> str:
     return "Every candidate in the shift's pool was evaluated."
 
 
+def render_technical_details(report: StaffingReport) -> None:
+    with st.expander("Technical details", icon=":material/build:"):
+        verification, trace, raw = st.tabs(["Verification", "Trace", "JSON"])
+        with verification:
+            if not report.issues:
+                st.success("All references were verified against tool evidence.")
+            for issue in report.issues:
+                show = st.error if issue.severity is IssueSeverity.ERROR else st.warning
+                show(f"`{issue.code}` {issue.message}")
+        with trace:
+            st.dataframe([e.model_dump() for e in report.trace], hide_index=True)
+            m = report.metrics
+            cols = st.columns(5)
+            cols[0].metric("LLM calls", m.llm_calls)
+            cols[1].metric("Tool calls", m.tool_calls)
+            cols[2].metric("Input tokens", f"{m.input_tokens:,}")
+            cols[3].metric("Output tokens", f"{m.output_tokens:,}")
+            cols[4].metric("Elapsed time (s)", f"{m.duration_ms / 1000:.1f}")
+        with raw:
+            payload = report.model_dump_json(indent=2)
+            st.download_button("Download JSON", payload, "staffing_report.json", "application/json")
+            st.json(payload, expanded=False)
+
+
 def render_recommendation(
     rec: CandidateRecommendation, review: OutreachReview, assistant: ShiftFillAssistant
 ) -> None:
     with st.container(border=True):
-        st.subheader(f"#{rec.rank} {rec.clinician_name}  ({rec.clinician_id})")
+        st.subheader(f"#{rec.rank} {rec.clinician_name} :gray[({rec.clinician_id})]")
         if badges := credential_badges(rec.credentials):
             st.markdown(badges)
+        for warning in rec.warnings:  # stays visible: it needs action before the shift
+            st.markdown(f":orange[:material/warning:] {warning.message}")
         st.write(rec.rationale)
-        for warning in rec.warnings:
-            st.caption(f":material/schedule: {warning.message}")
         for citation in rec.citations:
-            with st.expander(f"Source: {citation.chunk_id}"):
+            with st.expander(f"Source: {source_title(citation)}", icon=":material/description:"):
+                st.caption(f"Citation ID: {citation.chunk_id}")
                 st.write(citation.text)
         if rec.outreach:
             render_outreach(review, rec.outreach.draft_id, assistant)
+
+
+def source_title(citation: PolicyExcerpt) -> str:
+    if citation.facility_id == GLOBAL_SCOPE:
+        return f"{citation.section} (all facilities)"
+    return citation.section
 
 
 def render_candidate_row(name: str, clinician_id: str, badges: str, notes: list[str]) -> None:
@@ -361,56 +440,66 @@ def render_candidate_row(name: str, clinician_id: str, badges: str, notes: list[
 def render_outreach(review: OutreachReview, draft_id: str, assistant: ShiftFillAssistant) -> None:
     """Read-only draft with a copy button; the coordinator edits the note and approves."""
     entry = review[draft_id]
-    key = f"{review.run_id}-{draft_id}"  # widget state never leaks into another run
-    st.markdown(f"**Outreach draft:** {entry.draft.subject}")
-    st.code(entry.draft.body, language=None, wrap_lines=True)
-
-    if entry.status is DraftStatus.EDITING:
-        st.text_area(
-            "Personal note",
-            value=entry.draft.personal_note,
-            key=f"note-{key}",
-            height=110,
-            help="Shift details, credential reminders and the reply deadline come from the "
-            "system of record and are added back when you save.",
-        )
-        if entry.error:
-            st.error(f"Note not saved: {entry.error}")
-        with st.container(horizontal=True):
-            st.button(
-                "Save note",
-                key=f"save-{key}",
-                type="primary",
-                on_click=save_note,
-                args=(review.run_id, draft_id, assistant),
-            )
-            st.button(
-                "Cancel", key=f"cancel-{key}", on_click=cancel_edit, args=(review.run_id, draft_id)
-            )
-        return
-
+    key = f"{review.run_id}-{draft_id}"  # widget state never leaks into another run or draft
     approved = entry.status is DraftStatus.APPROVED
-    if approved:
-        st.success(APPROVED_MESSAGE, icon=":material/check:")
-    with st.container(horizontal=True, vertical_alignment="center"):
-        if not approved:
-            st.button(
-                "Approve & simulate sending",
-                key=f"approve-{key}",
-                type="primary",
-                icon=":material/send:",
-                on_click=approve_draft,
-                args=(review.run_id, draft_id),
+    with st.expander(
+        "Review outreach draft",
+        key=f"outreach-{key}",  # tracked, so it stays open across the reruns its buttons cause
+        on_change="rerun",
+        icon=":material/check_circle:" if approved else ":material/mail:",
+    ):
+        st.markdown(f"**Subject:** {entry.draft.subject}")
+        st.code(entry.draft.body, language=None, wrap_lines=True)
+
+        if entry.status is DraftStatus.EDITING:
+            st.text_area(
+                "Personal note",
+                value=entry.draft.personal_note,
+                key=f"note-{key}",
+                height=110,
+                help="Shift details, credential reminders and the reply deadline come from the "
+                "system of record and are added back when you save.",
             )
-            st.caption("Demo only—no message will be sent")
-        st.button(
-            "Edit note",
-            key=f"edit-{key}",
-            icon=":material/edit:",
-            help="Editing withdraws the approval." if approved else None,
-            on_click=start_edit,
-            args=(review.run_id, draft_id),
-        )
+            if entry.error:
+                st.error(f"Note not saved: {entry.error}")
+            with st.container(horizontal=True):
+                st.button(
+                    "Save note",
+                    key=f"save-{key}",
+                    type="primary",
+                    on_click=save_note,
+                    args=(review.run_id, draft_id, assistant),
+                )
+                st.button(
+                    "Cancel",
+                    key=f"cancel-{key}",
+                    on_click=cancel_edit,
+                    args=(review.run_id, draft_id),
+                )
+        else:
+            if approved:
+                st.success(APPROVED_MESSAGE, icon=":material/check:")
+            else:
+                st.markdown(APPROVE_PROMPT)
+            with st.container(horizontal=True):
+                if not approved:
+                    st.button(
+                        "Approve message",
+                        key=f"approve-{key}",
+                        type="primary",
+                        icon=":material/check:",
+                        on_click=approve_draft,
+                        args=(review.run_id, draft_id),
+                    )
+                st.button(
+                    "Edit note",
+                    key=f"edit-{key}",
+                    icon=":material/edit:",
+                    help="Editing withdraws the approval." if approved else None,
+                    on_click=start_edit,
+                    args=(review.run_id, draft_id),
+                )
+        st.caption(DEMO_NOTE)
 
 
 def current_review(run_id: str) -> OutreachReview | None:

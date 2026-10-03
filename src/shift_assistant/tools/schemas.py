@@ -170,9 +170,10 @@ class DraftOutreachArgs(_Args):
         max_length=500,
         description=(
             "1-3 friendly sentences, addressed to the clinician, on why they fit the shift, "
-            "using only facts from tool results. Shift logistics and credential reminders are "
-            "added automatically, so do not mention them. No pay rates, contact details or "
-            "other clinicians."
+            "using only facts from tool results. State a day or night preference only as the "
+            "profile words it, keeping preference and willingness distinct. Shift logistics and "
+            "credential reminders are added automatically, so do not mention them. No pay rates, "
+            "contact details or other clinicians."
         ),
     )
 

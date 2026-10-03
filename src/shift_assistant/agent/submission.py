@@ -24,7 +24,10 @@ class RecommendedCandidate(BaseModel):
     rationale: str = Field(
         min_length=20,
         max_length=600,
-        description="Why this clinician, grounded in tool results. Mention any credential warning.",
+        description=(
+            "1-3 sentences on why this clinician, grounded in tool results. Mention any credential "
+            "warning. List sources in citation_ids, not here."
+        ),
     )
     citation_ids: list[str] = Field(
         default_factory=list,

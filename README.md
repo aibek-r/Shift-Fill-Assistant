@@ -61,7 +61,7 @@ flowchart LR
 | Tools | `tools/` | Five tools with Pydantic argument schemas, plus a registry that never raises |
 | Agent | `agent/` | LangGraph state machine, prompts, the structured submission schema |
 | Reliability | `reliability/` | Grounding checker, verifier, deterministic fallback |
-| Interfaces | `app/streamlit_app.py`, `cli.py` | Streamlit UI with live progress and a Trace tab, and a CLI that prints Markdown or JSON |
+| Interfaces | `app/streamlit_app.py`, `cli.py` | Streamlit UI with live progress and a trace under Technical details, and a CLI that prints Markdown or JSON |
 
 ## How the requirements are met
 
@@ -104,7 +104,7 @@ language**.
   profile, Aisha Rahman, contains an injection attempt. She is ineligible anyway, and the verifier
   would drop her even if the model complied.
 - **Auditability.** Every LLM call, tool call, validation and verification step is recorded as a
-  trace event with its timing and tokens. The trace appears in the UI's Trace tab and is saved in the report.
+  trace event with its timing and tokens. The trace appears under Technical details in the UI and is saved in the report.
 
 ## Example workflows
 

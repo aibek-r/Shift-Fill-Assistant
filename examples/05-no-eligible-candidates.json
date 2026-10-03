@@ -6,7 +6,7 @@
   "status": "no_eligible_candidates",
   "mode": "agent",
   "summary": "3 candidates evaluated, covering the shift's full candidate pool: 0 eligible, 3 excluded. Nobody is eligible, so no one was shortlisted.",
-  "agent_notes": "The shift is a Bayview Children's Hospital NICU day assignment on 2026-10-19. The candidate pool did not produce any eligible clinician once licensure, certification, and experience were checked against the NICU requirements, so there is no safe recommendation to send forward.",
+  "agent_notes": "The open NICU day shift at Bayview Children's Hospital in San Diego requires a California RN license, BLS, NRP, and at least 2 years of NICU experience. The clinicians found for this shift were not eligible: one had insufficient NICU experience, one had an expired NRP credential, and one had an expired RN license. Because of those blockers, no clinician can be recommended for this shift.",
   "shift": {
     "shift_id": "SHF-3002",
     "facility_id": "FAC-003",
@@ -23,37 +23,6 @@
   "recommendations": [],
   "alternates": [],
   "excluded": [
-    {
-      "clinician_id": "C-116",
-      "clinician_name": "Isabella Garcia",
-      "reasons": [
-        {
-          "code": "CREDENTIAL_EXPIRED",
-          "message": "NRP expires 2026-09-30, before the shift ends on 2026-10-19.",
-          "credential": "NRP"
-        }
-      ],
-      "credentials": [
-        {
-          "type": "RN_LICENSE",
-          "status": "valid_through_shift",
-          "expires_on": "2028-05-31",
-          "jurisdiction": "CA"
-        },
-        {
-          "type": "BLS",
-          "status": "valid_through_shift",
-          "expires_on": "2027-07-31",
-          "jurisdiction": null
-        },
-        {
-          "type": "NRP",
-          "status": "expires_before_shift_end",
-          "expires_on": "2026-09-30",
-          "jurisdiction": null
-        }
-      ]
-    },
     {
       "clinician_id": "C-119",
       "clinician_name": "Ava Thompson",
@@ -81,6 +50,37 @@
           "type": "NRP",
           "status": "valid_through_shift",
           "expires_on": "2027-08-31",
+          "jurisdiction": null
+        }
+      ]
+    },
+    {
+      "clinician_id": "C-116",
+      "clinician_name": "Isabella Garcia",
+      "reasons": [
+        {
+          "code": "CREDENTIAL_EXPIRED",
+          "message": "NRP expires 2026-09-30, before the shift ends on 2026-10-19.",
+          "credential": "NRP"
+        }
+      ],
+      "credentials": [
+        {
+          "type": "RN_LICENSE",
+          "status": "valid_through_shift",
+          "expires_on": "2028-05-31",
+          "jurisdiction": "CA"
+        },
+        {
+          "type": "BLS",
+          "status": "valid_through_shift",
+          "expires_on": "2027-07-31",
+          "jurisdiction": null
+        },
+        {
+          "type": "NRP",
+          "status": "expires_before_shift_end",
+          "expires_on": "2026-09-30",
           "jurisdiction": null
         }
       ]
@@ -136,8 +136,8 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: find_open_shifts",
-      "duration_ms": 1143,
-      "input_tokens": 1332,
+      "duration_ms": 970,
+      "input_tokens": 1474,
       "output_tokens": 42
     },
     {
@@ -155,63 +155,73 @@
       "kind": "llm",
       "name": "model",
       "ok": true,
-      "detail": "Planned: search_facility_policies, search_clinicians",
-      "duration_ms": 1574,
-      "input_tokens": 1488,
-      "output_tokens": 98
+      "detail": "Planned: search_facility_policies",
+      "duration_ms": 1257,
+      "input_tokens": 1630,
+      "output_tokens": 54
     },
     {
       "step": 4,
       "kind": "tool",
       "name": "search_facility_policies",
       "ok": true,
-      "detail": "{\"facility_id\": \"FAC-003\", \"query\": \"NICU unit preferences and day shift arrival logistics\", \"top_k\": 4}",
-      "duration_ms": 8,
+      "detail": "{\"facility_id\": \"FAC-003\", \"query\": \"NICU unit preferences and day shift arrival logistics or outreach rules\", \"top_k\": 4}",
+      "duration_ms": 24,
       "input_tokens": null,
       "output_tokens": null
     },
     {
       "step": 5,
+      "kind": "llm",
+      "name": "model",
+      "ok": true,
+      "detail": "Planned: search_clinicians",
+      "duration_ms": 1496,
+      "input_tokens": 2045,
+      "output_tokens": 79
+    },
+    {
+      "step": 6,
       "kind": "tool",
       "name": "search_clinicians",
       "ok": true,
-      "detail": "{\"shift_id\": \"SHF-3002\", \"query\": \"NICU RN day shift, neonatal care, Bayview Children's preferences\", \"limit\": 10}",
-      "duration_ms": 8,
+      "detail": "{\"shift_id\": \"SHF-3002\", \"query\": \"NICU RN day shift California RN BLS NRP at least 2 years NICU experience\", \"limit\": 10}",
+      "duration_ms": 27,
       "input_tokens": null,
       "output_tokens": null
     },
     {
-      "step": 6,
+      "step": 7,
       "kind": "llm",
       "name": "model",
       "ok": true,
       "detail": "Planned: evaluate_candidates",
-      "duration_ms": 1354,
-      "input_tokens": 2173,
-      "output_tokens": 91
+      "duration_ms": 891,
+      "input_tokens": 2350,
+      "output_tokens": 51
     },
     {
-      "step": 7,
+      "step": 8,
       "kind": "tool",
       "name": "evaluate_candidates",
       "ok": true,
-      "detail": "{\"shift_id\": \"SHF-3002\", \"clinician_ids\": [\"C-116\", \"C-119\", \"C-120\"]}",
-      "duration_ms": 1,
+      "detail": "{\"shift_id\": \"SHF-3002\", \"clinician_ids\": [\"C-119\", \"C-116\", \"C-120\"]}",
+      "duration_ms": 0,
       "input_tokens": null,
       "output_tokens": null
     },
     {
-      "step": 8,
+      "step": 9,
       "kind": "llm",
       "name": "model",
       "ok": true,
       "detail": "Planned: submit_recommendation",
-      "duration_ms": 1365,
-      "input_tokens": 2508,
-      "output_tokens": 131
+      "duration_ms": 2781,
+      "input_tokens": 2645,
+      "output_tokens": 138
     },
     {
-      "step": 9,
+      "step": 10,
       "kind": "validation",
       "name": "submit_recommendation",
       "ok": true,
@@ -221,7 +231,7 @@
       "output_tokens": null
     },
     {
-      "step": 10,
+      "step": 11,
       "kind": "verification",
       "name": "grounding",
       "ok": true,
@@ -232,10 +242,10 @@
     }
   ],
   "metrics": {
-    "llm_calls": 4,
+    "llm_calls": 5,
     "tool_calls": 4,
-    "input_tokens": 7501,
-    "output_tokens": 362,
-    "duration_ms": 5470
+    "input_tokens": 10144,
+    "output_tokens": 364,
+    "duration_ms": 7469
   }
 }

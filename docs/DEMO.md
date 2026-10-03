@@ -8,9 +8,9 @@ Start the app first with `streamlit run app/streamlit_app.py`. Leave "Select a s
    capability, a Shift Fill Assistant. The LLM plans, ranks and writes. Plain code makes every
    compliance decision. Every claim is checked against tool evidence before anyone sees it."
 2. **Happy path (90 seconds).** Click the **ICU night shift** example, then **Run assistant**.
-   - Narrate the progress label as it changes. Then open the **Trace** tab. The agent resolved
-     the shift, searched policies and clinicians in parallel, vetted the whole pool, drafted
-     outreach, then submitted.
+   - Narrate the progress label as it changes. Then open **Technical details**, then **Trace**.
+     The agent resolved the shift, searched policies and clinicians in parallel, vetted the
+     whole pool, drafted outreach, then submitted.
    - Open **Recommendations**. Point at the citation expander, which shows the real policy text,
      and the outreach draft. The logistics and the reply deadline come from the record, not the
      model.

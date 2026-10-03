@@ -5,14 +5,14 @@
   },
   "status": "needs_clarification",
   "mode": "agent",
-  "summary": "I couldn’t resolve the facility from the request. The available facilities are St. Mary’s Medical Center, Lakeside Community Hospital, and Bayview Children’s Hospital.",
+  "summary": "I couldn’t match “Mercy General” to a known facility in the system.",
   "agent_notes": null,
   "shift": null,
   "recommendations": [],
   "alternates": [],
   "excluded": [],
   "coverage": null,
-  "clarification_question": "Which facility did you mean for “Mercy General tomorrow night” — St. Mary’s Medical Center (FAC-001), Lakeside Community Hospital (FAC-002), or Bayview Children’s Hospital (FAC-003)?",
+  "clarification_question": "Which facility did you mean? Known options are St. Mary's Medical Center (FAC-001), Lakeside Community Hospital (FAC-002), or Bayview Children's Hospital (FAC-003).",
   "issues": [],
   "trace": [
     {
@@ -21,9 +21,9 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: find_open_shifts",
-      "duration_ms": 1289,
-      "input_tokens": 1323,
-      "output_tokens": 41
+      "duration_ms": 1224,
+      "input_tokens": 1465,
+      "output_tokens": 82
     },
     {
       "step": 2,
@@ -41,9 +41,9 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: submit_recommendation",
-      "duration_ms": 1925,
-      "input_tokens": 1418,
-      "output_tokens": 145
+      "duration_ms": 1284,
+      "input_tokens": 1601,
+      "output_tokens": 123
     },
     {
       "step": 4,
@@ -69,8 +69,8 @@
   "metrics": {
     "llm_calls": 2,
     "tool_calls": 1,
-    "input_tokens": 2741,
-    "output_tokens": 186,
-    "duration_ms": 3227
+    "input_tokens": 3066,
+    "output_tokens": 205,
+    "duration_ms": 2518
   }
 }

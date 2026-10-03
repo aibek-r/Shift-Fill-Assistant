@@ -73,7 +73,7 @@ Staffing Operations Team
 ## Trace
 
 ```text
-[ 1] llm:model FAILED 14ms | simulated LLM outage
+[ 1] llm:model FAILED 15ms | simulated LLM outage
 [ 2] fallback:rules ok 1ms | LLM call failed (ConnectionError)
 ```
 

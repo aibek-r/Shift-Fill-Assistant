@@ -6,7 +6,7 @@
   "status": "ready",
   "mode": "agent",
   "summary": "9 candidates evaluated, covering the shift's full candidate pool: 3 eligible, 6 excluded. 2 eligible clinicians shortlisted for 2 open positions; 1 eligible alternate was not shortlisted.",
-  "agent_notes": "I shortlisted the two eligible ICU nurses whose profiles best align with the unit’s stated needs and the night shift. Maria Santos ranks first because she combines CCRN certification with CRRT and post-cardiac-surgery experience, plus a strong night-shift preference; Grace Liu comes next with strong cardiovascular ICU experience and willingness to work nights, but she has a weaker stated night preference than Maria.",
+  "agent_notes": "Maria Santos and Grace Liu are the best fits for this St. Mary’s ICU night shift. Maria ranks first because her ICU background directly matches the unit’s preferred CRRT and post-cardiac-surgery experience and she strongly prefers night work. Grace comes next because her cardiovascular ICU background is strong and she is open to occasional nights, while the remaining eligible clinician has a credential warning and a less direct match to the unit’s preferred ICU experience.",
   "shift": {
     "shift_id": "SHF-1001",
     "facility_id": "FAC-001",
@@ -25,7 +25,7 @@
       "rank": 1,
       "clinician_id": "C-101",
       "clinician_name": "Maria Santos",
-      "rationale": "Maria Santos is eligible and best matches the ICU unit profile: she has 6 years of critical care experience, CCRN certification, and direct CRRT and post-cardiac-surgery experience, which the unit strongly values. She also strongly prefers night shifts, matching the shift period, and has no credential warnings. Policy support: FAC-001#icu-unit-profile, GLOBAL#candidate-prioritization.",
+      "rationale": "Maria Santos is the strongest match for this ICU night shift: she has 6 years in a surgical ICU, CCRN certification, and experience with CRRT and post-cardiac-surgery patients, which aligns with the unit’s stated preferences. She also strongly prefers night shifts, and she has no credential warnings.",
       "warnings": [],
       "credentials": [
         {
@@ -53,30 +53,30 @@
           "facility_id": "FAC-001",
           "section": "ICU unit profile",
           "text": "ICU unit profile\nThe ICU is a 24-bed mixed medical-surgical unit with a 1:2 nurse-to-patient ratio. Agency ICU nurses must hold active RN licensure valid in Texas (a multistate compact license is accepted), plus BLS and ACLS, and need at least 2 years of recent ICU experience. CCRN certification is strongly preferred. Experience with CRRT and post-cardiac-surgery patients is highly valued because the unit receives cardiothoracic recoveries most nights.",
-          "score": 0.6991
+          "score": 0.7313
         },
         {
           "chunk_id": "GLOBAL#candidate-prioritization",
           "facility_id": "GLOBAL",
           "section": "Candidate prioritization",
           "text": "Candidate prioritization\nWhen several clinicians are eligible, prefer candidates whose experience matches the unit's stated preferences, who have expressed a preference for the shift type (day or night), and whose credentials are not about to expire. Recommend more candidates than open positions only when coordinators asked for a shortlist.",
-          "score": 0.6891
+          "score": 0.7032
         }
       ],
       "outreach": {
         "draft_id": "DRAFT-SHF-1001-C-101",
         "shift_id": "SHF-1001",
         "clinician_id": "C-101",
-        "personal_note": "Your critical care background, CCRN certification, and experience with CRRT and post-cardiac-surgery patients align closely with this ICU's needs. Your strong preference for night shifts also matches this assignment.",
+        "personal_note": "You look like a strong fit for this ICU night shift because you have 6 years in a surgical ICU and experience with CRRT and post-cardiac-surgery patients. You also strongly prefer night shifts, which matches this assignment.",
         "subject": "Open ICU night shift at St. Mary's Medical Center on Wed, Oct 14",
-        "body": "Hi Maria,\n\nYour critical care background, CCRN certification, and experience with CRRT and post-cardiac-surgery patients align closely with this ICU's needs. Your strong preference for night shifts also matches this assignment.\n\nShift details\n- Facility: St. Mary's Medical Center (Austin, TX)\n- Unit: ICU\n- Time: Wed, Oct 14, 2026, 7:00 PM to Thu, Oct 15, 2026, 7:00 AM (America/Chicago)\n\nPlease reply by Mon, Oct 12, 2026, 7:00 PM (America/Chicago) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
+        "body": "Hi Maria,\n\nYou look like a strong fit for this ICU night shift because you have 6 years in a surgical ICU and experience with CRRT and post-cardiac-surgery patients. You also strongly prefer night shifts, which matches this assignment.\n\nShift details\n- Facility: St. Mary's Medical Center (Austin, TX)\n- Unit: ICU\n- Time: Wed, Oct 14, 2026, 7:00 PM to Thu, Oct 15, 2026, 7:00 AM (America/Chicago)\n\nPlease reply by Mon, Oct 12, 2026, 7:00 PM (America/Chicago) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
       }
     },
     {
       "rank": 2,
       "clinician_id": "C-107",
       "clinician_name": "Grace Liu",
-      "rationale": "Grace Liu is eligible and has strong ICU alignment with 5 years of cardiovascular ICU experience, which fits the unit's preference for high-acuity ICU experience. She is open to occasional nights, and has no credential warnings. Policy support: FAC-001#icu-unit-profile, GLOBAL#candidate-prioritization.",
+      "rationale": "Grace Liu is also a good ICU option with 5 years of cardiovascular ICU experience, which fits the unit’s critical-care profile. She prefers day shifts but is open to occasional nights, so she is a solid fit for a night assignment; she has no credential warnings.",
       "warnings": [],
       "credentials": [
         {
@@ -104,23 +104,23 @@
           "facility_id": "FAC-001",
           "section": "ICU unit profile",
           "text": "ICU unit profile\nThe ICU is a 24-bed mixed medical-surgical unit with a 1:2 nurse-to-patient ratio. Agency ICU nurses must hold active RN licensure valid in Texas (a multistate compact license is accepted), plus BLS and ACLS, and need at least 2 years of recent ICU experience. CCRN certification is strongly preferred. Experience with CRRT and post-cardiac-surgery patients is highly valued because the unit receives cardiothoracic recoveries most nights.",
-          "score": 0.6991
+          "score": 0.7313
         },
         {
           "chunk_id": "GLOBAL#candidate-prioritization",
           "facility_id": "GLOBAL",
           "section": "Candidate prioritization",
           "text": "Candidate prioritization\nWhen several clinicians are eligible, prefer candidates whose experience matches the unit's stated preferences, who have expressed a preference for the shift type (day or night), and whose credentials are not about to expire. Recommend more candidates than open positions only when coordinators asked for a shortlist.",
-          "score": 0.6891
+          "score": 0.7032
         }
       ],
       "outreach": {
         "draft_id": "DRAFT-SHF-1001-C-107",
         "shift_id": "SHF-1001",
         "clinician_id": "C-107",
-        "personal_note": "Your cardiovascular ICU background and 5 years of experience fit this ICU night shift well, and your Epic experience is a plus for the unit. You also indicated you are open to occasional nights.",
+        "personal_note": "Your cardiovascular ICU background and 5 years of experience fit this ICU role well. You prefer day shifts but are open to occasional nights, which makes you a good option for this night assignment.",
         "subject": "Open ICU night shift at St. Mary's Medical Center on Wed, Oct 14",
-        "body": "Hi Grace,\n\nYour cardiovascular ICU background and 5 years of experience fit this ICU night shift well, and your Epic experience is a plus for the unit. You also indicated you are open to occasional nights.\n\nShift details\n- Facility: St. Mary's Medical Center (Austin, TX)\n- Unit: ICU\n- Time: Wed, Oct 14, 2026, 7:00 PM to Thu, Oct 15, 2026, 7:00 AM (America/Chicago)\n\nPlease reply by Mon, Oct 12, 2026, 7:00 PM (America/Chicago) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
+        "body": "Hi Grace,\n\nYour cardiovascular ICU background and 5 years of experience fit this ICU role well. You prefer day shifts but are open to occasional nights, which makes you a good option for this night assignment.\n\nShift details\n- Facility: St. Mary's Medical Center (Austin, TX)\n- Unit: ICU\n- Time: Wed, Oct 14, 2026, 7:00 PM to Thu, Oct 15, 2026, 7:00 AM (America/Chicago)\n\nPlease reply by Mon, Oct 12, 2026, 7:00 PM (America/Chicago) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
       }
     }
   ],
@@ -190,37 +190,6 @@
       ]
     },
     {
-      "clinician_id": "C-106",
-      "clinician_name": "Tom Brennan",
-      "reasons": [
-        {
-          "code": "LICENSE_NOT_VALID_IN_STATE",
-          "message": "RN license jurisdiction (CA) is not valid in TX; needs TX or COMPACT.",
-          "credential": "RN_LICENSE"
-        }
-      ],
-      "credentials": [
-        {
-          "type": "RN_LICENSE",
-          "status": "not_valid_in_state",
-          "expires_on": null,
-          "jurisdiction": "CA"
-        },
-        {
-          "type": "BLS",
-          "status": "valid_through_shift",
-          "expires_on": "2027-06-30",
-          "jurisdiction": null
-        },
-        {
-          "type": "ACLS",
-          "status": "valid_through_shift",
-          "expires_on": "2027-06-30",
-          "jurisdiction": null
-        }
-      ]
-    },
-    {
       "clinician_id": "C-109",
       "clinician_name": "Sofia Martinez",
       "reasons": [
@@ -247,6 +216,37 @@
           "type": "ACLS",
           "status": "valid_through_shift",
           "expires_on": "2027-07-31",
+          "jurisdiction": null
+        }
+      ]
+    },
+    {
+      "clinician_id": "C-106",
+      "clinician_name": "Tom Brennan",
+      "reasons": [
+        {
+          "code": "LICENSE_NOT_VALID_IN_STATE",
+          "message": "RN license jurisdiction (CA) is not valid in TX; needs TX or COMPACT.",
+          "credential": "RN_LICENSE"
+        }
+      ],
+      "credentials": [
+        {
+          "type": "RN_LICENSE",
+          "status": "not_valid_in_state",
+          "expires_on": null,
+          "jurisdiction": "CA"
+        },
+        {
+          "type": "BLS",
+          "status": "valid_through_shift",
+          "expires_on": "2027-06-30",
+          "jurisdiction": null
+        },
+        {
+          "type": "ACLS",
+          "status": "valid_through_shift",
+          "expires_on": "2027-06-30",
           "jurisdiction": null
         }
       ]
@@ -283,37 +283,6 @@
       ]
     },
     {
-      "clinician_id": "C-103",
-      "clinician_name": "Priya Patel",
-      "reasons": [
-        {
-          "code": "INSUFFICIENT_REST",
-          "message": "Only 0.0h between this shift and booking ASG-501; St. Mary's Medical Center requires 10h of rest.",
-          "credential": null
-        }
-      ],
-      "credentials": [
-        {
-          "type": "RN_LICENSE",
-          "status": "valid_through_shift",
-          "expires_on": "2028-06-30",
-          "jurisdiction": "COMPACT"
-        },
-        {
-          "type": "BLS",
-          "status": "valid_through_shift",
-          "expires_on": "2027-08-31",
-          "jurisdiction": null
-        },
-        {
-          "type": "ACLS",
-          "status": "valid_through_shift",
-          "expires_on": "2027-08-31",
-          "jurisdiction": null
-        }
-      ]
-    },
-    {
       "clinician_id": "C-108",
       "clinician_name": "Robert Diaz",
       "reasons": [
@@ -343,6 +312,37 @@
           "jurisdiction": null
         }
       ]
+    },
+    {
+      "clinician_id": "C-103",
+      "clinician_name": "Priya Patel",
+      "reasons": [
+        {
+          "code": "INSUFFICIENT_REST",
+          "message": "Only 0.0h between this shift and booking ASG-501; St. Mary's Medical Center requires 10h of rest.",
+          "credential": null
+        }
+      ],
+      "credentials": [
+        {
+          "type": "RN_LICENSE",
+          "status": "valid_through_shift",
+          "expires_on": "2028-06-30",
+          "jurisdiction": "COMPACT"
+        },
+        {
+          "type": "BLS",
+          "status": "valid_through_shift",
+          "expires_on": "2027-08-31",
+          "jurisdiction": null
+        },
+        {
+          "type": "ACLS",
+          "status": "valid_through_shift",
+          "expires_on": "2027-08-31",
+          "jurisdiction": null
+        }
+      ]
     }
   ],
   "coverage": {
@@ -364,8 +364,8 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: find_open_shifts",
-      "duration_ms": 2601,
-      "input_tokens": 1335,
+      "duration_ms": 2117,
+      "input_tokens": 1477,
       "output_tokens": 42
     },
     {
@@ -384,17 +384,17 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: search_facility_policies, search_clinicians",
-      "duration_ms": 2012,
-      "input_tokens": 1489,
-      "output_tokens": 159
+      "duration_ms": 1750,
+      "input_tokens": 1631,
+      "output_tokens": 104
     },
     {
       "step": 4,
       "kind": "tool",
       "name": "search_facility_policies",
       "ok": true,
-      "detail": "{\"facility_id\": \"FAC-001\", \"query\": \"ICU unit preferences and night shift arrival outreach rules\", \"top_k\": 4}",
-      "duration_ms": 22,
+      "detail": "{\"facility_id\": \"FAC-001\", \"query\": \"ICU unit preferences and any night shift arrival or outreach rules\", \"top_k\": 5}",
+      "duration_ms": 23,
       "input_tokens": null,
       "output_tokens": null
     },
@@ -403,8 +403,8 @@
       "kind": "tool",
       "name": "search_clinicians",
       "ok": true,
-      "detail": "{\"shift_id\": \"SHF-1001\", \"query\": \"ICU RN night shift; preferences for critical care, ventilator, hemodynamic monitoring, night availability\", \"limit\": 10}",
-      "duration_ms": 31,
+      "detail": "{\"shift_id\": \"SHF-1001\", \"query\": \"ICU RN night shift, critical care experience, prefers nights or open to nights\", \"limit\": 10}",
+      "duration_ms": 22,
       "input_tokens": null,
       "output_tokens": null
     },
@@ -414,17 +414,17 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: evaluate_candidates",
-      "duration_ms": 931,
-      "input_tokens": 2742,
-      "output_tokens": 79
+      "duration_ms": 1967,
+      "input_tokens": 2889,
+      "output_tokens": 109
     },
     {
       "step": 7,
       "kind": "tool",
       "name": "evaluate_candidates",
       "ok": true,
-      "detail": "{\"shift_id\": \"SHF-1001\", \"clinician_ids\": [\"C-102\", \"C-106\", \"C-109\", \"C-105\", \"C-107\", \"C-104\", \"C-101\", \"C-103\", \"C-108\"]}",
-      "duration_ms": 2,
+      "detail": "{\"shift_id\": \"SHF-1001\", \"clinician_ids\": [\"C-102\", \"C-109\", \"C-106\", \"C-105\", \"C-107\", \"C-104\", \"C-101\", \"C-108\", \"C-103\"]}",
+      "duration_ms": 3,
       "input_tokens": null,
       "output_tokens": null
     },
@@ -434,16 +434,16 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: draft_outreach, draft_outreach",
-      "duration_ms": 1821,
-      "input_tokens": 3429,
-      "output_tokens": 218
+      "duration_ms": 3096,
+      "input_tokens": 3606,
+      "output_tokens": 263
     },
     {
       "step": 9,
       "kind": "tool",
       "name": "draft_outreach",
       "ok": true,
-      "detail": "{\"shift_id\": \"SHF-1001\", \"clinician_id\": \"C-107\", \"personal_note\": \"Your cardiovascular ICU background and 5 years of experience fit this ICU night shift well, and your Epic experience is a plus for t...",
+      "detail": "{\"shift_id\": \"SHF-1001\", \"clinician_id\": \"C-101\", \"personal_note\": \"You look like a strong fit for this ICU night shift because you have 6 years in a surgical ICU and experience with CRRT and post-car...",
       "duration_ms": 1,
       "input_tokens": null,
       "output_tokens": null
@@ -453,7 +453,7 @@
       "kind": "tool",
       "name": "draft_outreach",
       "ok": true,
-      "detail": "{\"shift_id\": \"SHF-1001\", \"clinician_id\": \"C-101\", \"personal_note\": \"Your critical care background, CCRN certification, and experience with CRRT and post-cardiac-surgery patients align closely with thi...",
+      "detail": "{\"shift_id\": \"SHF-1001\", \"clinician_id\": \"C-107\", \"personal_note\": \"Your cardiovascular ICU background and 5 years of experience fit this ICU role well. You prefer day shifts but are open to occasiona...",
       "duration_ms": 1,
       "input_tokens": null,
       "output_tokens": null
@@ -464,9 +464,9 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: submit_recommendation",
-      "duration_ms": 2811,
-      "input_tokens": 4159,
-      "output_tokens": 368
+      "duration_ms": 3030,
+      "input_tokens": 4393,
+      "output_tokens": 397
     },
     {
       "step": 12,
@@ -484,7 +484,7 @@
       "name": "grounding",
       "ok": true,
       "detail": "2 recommendation(s) verified; 0 issue(s) enforced.",
-      "duration_ms": 0,
+      "duration_ms": 1,
       "input_tokens": null,
       "output_tokens": null
     }
@@ -492,8 +492,8 @@
   "metrics": {
     "llm_calls": 5,
     "tool_calls": 6,
-    "input_tokens": 13154,
-    "output_tokens": 866,
-    "duration_ms": 10255
+    "input_tokens": 13996,
+    "output_tokens": 915,
+    "duration_ms": 12037
   }
 }
