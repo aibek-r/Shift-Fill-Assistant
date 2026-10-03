@@ -24,7 +24,13 @@ from shift_assistant.reliability.grounding import (
     GroundingProblem,
     check_grounding,
 )
-from shift_assistant.reliability.reporting import alternates, exclusions, fill_status
+from shift_assistant.reliability.reporting import (
+    alternates,
+    candidate_coverage,
+    coverage_summary,
+    exclusions,
+    fill_status,
+)
 from shift_assistant.tools.evidence import EvidenceLedger
 
 
@@ -76,6 +82,7 @@ def build_agent_report(
                 clinician_name=evaluation.clinician_name,
                 rationale=rec.rationale,
                 warnings=evaluation.warnings,
+                credentials=evaluation.credentials,
                 citations=[
                     ledger.policy_excerpts[c]
                     for c in dict.fromkeys(rec.citation_ids)
@@ -85,15 +92,28 @@ def build_agent_report(
             )
         )
 
+    eligible_alternates = alternates(evaluations, {r.clinician_id for r in recommendations})
+    excluded = exclusions(evaluations)
+    removed = len(submission.recommendations) - len(recommendations)
+    coverage = candidate_coverage(
+        recommendations,
+        eligible_alternates,
+        excluded,
+        ledger.candidate_pools.get(shift.shift_id),
+        removed_by_verification=removed,
+    )
     return StaffingReport(
         request=request,
-        status=fill_status(len(recommendations), shift.positions_open),
+        status=fill_status(len(recommendations), coverage.eligible, shift.positions_open),
         mode=RunMode.AGENT,
-        summary=submission.summary,
+        summary=coverage_summary(coverage, shift.positions_open),
+        # The notes describe the agent's own shortlist; once verification changes it they are stale.
+        agent_notes=None if removed else submission.summary,
         shift=shift,
         recommendations=recommendations,
-        alternates=alternates(evaluations, {r.clinician_id for r in recommendations}),
-        excluded=exclusions(evaluations),
+        alternates=eligible_alternates,
+        excluded=excluded,
+        coverage=coverage,
         issues=[_issue(p) for p in problems],
     )
 

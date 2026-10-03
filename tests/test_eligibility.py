@@ -4,7 +4,12 @@ from datetime import date
 
 import pytest
 
-from shift_assistant.domain.eligibility import CheckCode, EligibilityEngine, EligibilityResult
+from shift_assistant.domain.eligibility import (
+    CheckCode,
+    CredentialStatus,
+    EligibilityEngine,
+    EligibilityResult,
+)
 from shift_assistant.domain.models import CredentialType
 from shift_assistant.repository import StaffingRepository
 
@@ -79,3 +84,17 @@ def test_credential_expiring_on_the_last_shift_day_is_still_valid(
     assert result.eligible
     assert result.warnings[0].code is CheckCode.CREDENTIAL_EXPIRING_SOON
     assert shift_end_day == date(2026, 10, 15)
+
+
+def test_credential_checks_record_what_was_verified(repository: StaffingRepository) -> None:
+    daniel = evaluate(repository, "C-104", "SHF-1001")  # eligible, ACLS expiring soon
+    tom = evaluate(repository, "C-106", "SHF-1001")  # CA license at a TX facility
+
+    assert [(c.type, c.status) for c in daniel.credentials] == [
+        (CredentialType.RN_LICENSE, CredentialStatus.VALID_THROUGH_SHIFT),
+        (CredentialType.BLS, CredentialStatus.VALID_THROUGH_SHIFT),
+        (CredentialType.ACLS, CredentialStatus.EXPIRING_SOON),
+    ]
+    assert all(c.expires_on is not None for c in daniel.credentials)
+    assert tom.credentials[0].status is CredentialStatus.NOT_VALID_IN_STATE
+    assert tom.credentials[0].jurisdiction == "CA"

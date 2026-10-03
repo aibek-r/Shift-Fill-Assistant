@@ -33,6 +33,8 @@ def render_markdown(report: StaffingReport) -> str:
     if report.shift:
         lines.append(f"- **Shift:** {describe_shift(report.shift)}")
     lines += ["", "## Summary", "", report.summary]
+    if report.agent_notes:
+        lines += ["", f"**Agent notes:** {report.agent_notes}"]
     if report.clarification_question:
         lines += ["", f"**Question for the coordinator:** {report.clarification_question}"]
 
@@ -59,7 +61,7 @@ def render_markdown(report: StaffingReport) -> str:
             ]
 
     if report.alternates:
-        lines += ["", "## Other eligible candidates (not shortlisted)", ""]
+        lines += ["", "## Alternates (eligible, not shortlisted)", ""]
         lines += [
             f"- {a.clinician_name} ({a.clinician_id})"
             + "".join(f"; warning: {w.message}" for w in a.warnings)

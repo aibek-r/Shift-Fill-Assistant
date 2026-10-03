@@ -6,7 +6,9 @@
 
 ## Summary
 
-No clinicians are eligible for SHF-3002. Isabella Garcia was blocked because her NRP expires before the shift ends, Ava Thompson does not meet the NICU minimum experience requirement, and Lucas Moore’s RN license expires before the shift ends. The shift remains unfilled.
+3 candidates evaluated, covering the shift's full candidate pool: 0 eligible, 3 excluded. Nobody is eligible, so no one was shortlisted.
+
+**Agent notes:** The shift is a Bayview Children's Hospital NICU day assignment on 2026-10-19. The candidate pool did not produce any eligible clinician once licensure, certification, and experience were checked against the NICU requirements, so there is no safe recommendation to send forward.
 
 ## Excluded candidates
 
@@ -23,16 +25,16 @@ All references were verified against tool evidence.
 ## Trace
 
 ```text
-[ 1] llm:model ok 1042ms | Planned: find_open_shifts
+[ 1] llm:model ok 1143ms | Planned: find_open_shifts
 [ 2] tool:find_open_shifts ok 1ms | {"facility": "Bayview Children's", "unit": "NICU", "start_date": "2026-10-19", "shift_id": null}
-[ 3] llm:model ok 4052ms | Planned: search_facility_policies, search_clinicians
-[ 4] tool:search_facility_policies ok 23ms | {"facility_id": "FAC-003", "query": "NICU unit preferences, day shift arrival logistics, outreach rules", "top_k": 5}
-[ 5] tool:search_clinicians ok 23ms | {"shift_id": "SHF-3002", "query": "NICU RN day shift, neonatal experience, day shift preference", "limit": 10}
-[ 6] llm:model ok 1311ms | Planned: evaluate_candidates
+[ 3] llm:model ok 1574ms | Planned: search_facility_policies, search_clinicians
+[ 4] tool:search_facility_policies ok 8ms | {"facility_id": "FAC-003", "query": "NICU unit preferences and day shift arrival logistics", "top_k": 4}
+[ 5] tool:search_clinicians ok 8ms | {"shift_id": "SHF-3002", "query": "NICU RN day shift, neonatal care, Bayview Children's preferences", "limit": 10}
+[ 6] llm:model ok 1354ms | Planned: evaluate_candidates
 [ 7] tool:evaluate_candidates ok 1ms | {"shift_id": "SHF-3002", "clinician_ids": ["C-116", "C-119", "C-120"]}
-[ 8] llm:model ok 1976ms | Planned: submit_recommendation
+[ 8] llm:model ok 1365ms | Planned: submit_recommendation
 [ 9] validation:submit_recommendation ok 0ms | Submission accepted.
 [10] verification:grounding ok 0ms | 0 recommendation(s) verified; 0 issue(s) enforced.
 ```
 
-4 LLM calls, 4 tool calls, 7888 tokens, 8.4s.
+4 LLM calls, 4 tool calls, 7863 tokens, 5.5s.

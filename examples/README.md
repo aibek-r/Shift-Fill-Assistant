@@ -9,7 +9,7 @@ between runs. Compliance verdicts do not.
    shift, retrieves the ICU profile, searches and vets all 9 ICU nurses, and drafts outreach. The
    compliance engine excludes 6 nurses, each with a reason code. Daniel Kim is eligible but has an
    expiring ACLS certificate, so the agent ranks him below two cleaner candidates. The report lists
-   him under "Other eligible candidates", a list computed by code rather than by the model.
+   him under "Alternates", a list computed by code rather than by the model.
 2. **[PICU shortlist with a warning](02-picu-shortlist-with-warning.md).** The coordinator asks
    for a shortlist of two for one opening. Liam Chen's PALS expires 22 days after the shift. The
    warning appears in his rationale, and his outreach draft gets an automatic renewal reminder.

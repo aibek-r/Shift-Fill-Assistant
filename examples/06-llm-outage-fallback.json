@@ -5,7 +5,8 @@
   },
   "status": "ready",
   "mode": "fallback",
-  "summary": "Rule-based shortlist: 2 of 3 candidates meet all requirements, ranked by credential warnings, then experience.",
+  "summary": "3 candidates evaluated, covering the shift's full candidate pool: 2 eligible, 1 excluded. 2 eligible clinicians shortlisted for 2 open positions. Ranked by credential warnings, then experience.",
+  "agent_notes": null,
   "shift": {
     "shift_id": "SHF-2001",
     "facility_id": "FAC-002",
@@ -26,11 +27,26 @@
       "clinician_name": "Olivia Brown",
       "rationale": "Meets every Med-Surg requirement with 2 years of experience.",
       "warnings": [],
+      "credentials": [
+        {
+          "type": "RN_LICENSE",
+          "status": "valid_through_shift",
+          "expires_on": "2027-10-31",
+          "jurisdiction": "CO"
+        },
+        {
+          "type": "BLS",
+          "status": "valid_through_shift",
+          "expires_on": "2027-02-28",
+          "jurisdiction": null
+        }
+      ],
       "citations": [],
       "outreach": {
         "draft_id": "DRAFT-SHF-2001-C-112",
         "shift_id": "SHF-2001",
         "clinician_id": "C-112",
+        "personal_note": "Your experience and credentials match the requirements for this unit, and we would love to have you on this shift.",
         "subject": "Open Med-Surg day shift at Lakeside Community Hospital on Fri, Oct 16",
         "body": "Hi Olivia,\n\nYour experience and credentials match the requirements for this unit, and we would love to have you on this shift.\n\nShift details\n- Facility: Lakeside Community Hospital (Denver, CO)\n- Unit: Med-Surg\n- Time: Fri, Oct 16, 2026, 7:00 AM to Fri, Oct 16, 2026, 7:00 PM (America/Denver)\n\nPlease reply by Wed, Oct 14, 2026, 7:00 AM (America/Denver) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
       }
@@ -47,11 +63,26 @@
           "credential": "BLS"
         }
       ],
+      "credentials": [
+        {
+          "type": "RN_LICENSE",
+          "status": "valid_through_shift",
+          "expires_on": "2028-01-31",
+          "jurisdiction": "COMPACT"
+        },
+        {
+          "type": "BLS",
+          "status": "expiring_soon",
+          "expires_on": "2026-10-31",
+          "jurisdiction": null
+        }
+      ],
       "citations": [],
       "outreach": {
         "draft_id": "DRAFT-SHF-2001-C-113",
         "shift_id": "SHF-2001",
         "clinician_id": "C-113",
+        "personal_note": "Your experience and credentials match the requirements for this unit, and we would love to have you on this shift.",
         "subject": "Open Med-Surg day shift at Lakeside Community Hospital on Fri, Oct 16",
         "body": "Hi Ethan,\n\nYour experience and credentials match the requirements for this unit, and we would love to have you on this shift.\n\nShift details\n- Facility: Lakeside Community Hospital (Denver, CO)\n- Unit: Med-Surg\n- Time: Fri, Oct 16, 2026, 7:00 AM to Fri, Oct 16, 2026, 7:00 PM (America/Denver)\n\nCredential reminder\n- Your BLS expires soon. Please upload your renewal so you stay eligible.\n\nPlease reply by Wed, Oct 14, 2026, 7:00 AM (America/Denver) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
       }
@@ -68,9 +99,33 @@
           "message": "RN license jurisdiction (IL) is not valid in CO; needs CO or COMPACT.",
           "credential": "RN_LICENSE"
         }
+      ],
+      "credentials": [
+        {
+          "type": "RN_LICENSE",
+          "status": "not_valid_in_state",
+          "expires_on": null,
+          "jurisdiction": "IL"
+        },
+        {
+          "type": "BLS",
+          "status": "valid_through_shift",
+          "expires_on": "2027-05-31",
+          "jurisdiction": null
+        }
       ]
     }
   ],
+  "coverage": {
+    "pool_size": 3,
+    "evaluated": 3,
+    "eligible": 2,
+    "recommended": 2,
+    "alternates": 0,
+    "excluded": 1,
+    "unevaluated_ids": [],
+    "removed_by_verification": 0
+  },
   "clarification_question": null,
   "issues": [
     {
@@ -106,6 +161,6 @@
     "tool_calls": 0,
     "input_tokens": 0,
     "output_tokens": 0,
-    "duration_ms": 22
+    "duration_ms": 21
   }
 }

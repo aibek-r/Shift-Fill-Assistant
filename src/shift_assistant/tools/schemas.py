@@ -11,7 +11,7 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from shift_assistant.domain.eligibility import Finding
+from shift_assistant.domain.eligibility import CredentialCheck, Finding
 from shift_assistant.domain.models import Facility, Role, Shift, Unit
 
 
@@ -142,6 +142,8 @@ class CandidateEvaluation(_Result):
     eligible: bool
     blockers: list[Finding]
     warnings: list[Finding]
+    # Shown in the report, kept out of the model's context: findings already carry what it needs.
+    credentials: list[CredentialCheck] = Field(default_factory=list, exclude=True)
 
 
 class EvaluateCandidatesResult(_Result):
@@ -186,5 +188,6 @@ class OutreachDraft(_Result):
     draft_id: str
     shift_id: str
     clinician_id: str
+    personal_note: str
     subject: str
     body: str

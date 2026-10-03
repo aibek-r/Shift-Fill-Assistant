@@ -5,6 +5,8 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
+from pydantic import ValidationError
+
 from shift_assistant.agent.graph import AgentDependencies, build_agent_graph
 from shift_assistant.agent.llm import ToolCallingModel, build_chat_model
 from shift_assistant.agent.prompts import build_initial_messages
@@ -17,7 +19,9 @@ from shift_assistant.reliability.fallback import DeterministicFallback
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.retrieval.embedder import Embedder, create_embedder
 from shift_assistant.retrieval.knowledge import ClinicianProfileIndex, PolicyKnowledgeBase
-from shift_assistant.tools.registry import build_tool_registry
+from shift_assistant.tools.outreach import draft_id_for
+from shift_assistant.tools.registry import build_tool_registry, describe_validation_error
+from shift_assistant.tools.schemas import DraftOutreachArgs, OutreachDraft
 from shift_assistant.tools.toolkit import StaffingToolkit
 
 EventHandler = Callable[[TraceEvent], None]
@@ -29,9 +33,11 @@ class ShiftFillAssistant:
         settings: Settings,
         repository: StaffingRepository,
         deps: AgentDependencies,
+        toolkit: StaffingToolkit,
     ) -> None:
         self.settings = settings
         self.repository = repository
+        self._toolkit = toolkit
         self.llm_enabled = deps.model is not None
         self._graph = build_agent_graph(deps)
         # Each LLM call costs at most three graph steps (agent, tools or validate, verify).
@@ -67,6 +73,24 @@ class ShiftFillAssistant:
         )
         return final["report"].model_copy(update={"trace": trace, "metrics": metrics})
 
+    def revise_outreach(
+        self, shift_id: str, clinician_id: str, personal_note: str
+    ) -> OutreachDraft:
+        """Re-render a draft around a coordinator's edited note.
+
+        Runs the same validation and eligibility checks as the draft_outreach tool, so the shift
+        details and credential reminders still come from the system of record.
+        Raises ValueError with a readable message when the note or clinician is rejected.
+        """
+        try:
+            args = DraftOutreachArgs(
+                shift_id=shift_id, clinician_id=clinician_id, personal_note=personal_note
+            )
+        except ValidationError as exc:
+            raise ValueError(describe_validation_error(exc)) from exc
+        output = self._toolkit.draft_outreach(args)
+        return output.evidence.drafts[draft_id_for(shift_id, clinician_id)]
+
 
 def build_assistant(
     settings: Settings | None = None,
@@ -96,4 +120,4 @@ def build_assistant(
         fallback=DeterministicFallback(repository, toolkit, settings.max_recommendations),
         settings=settings,
     )
-    return ShiftFillAssistant(settings, repository, deps)
+    return ShiftFillAssistant(settings, repository, deps, toolkit)

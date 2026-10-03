@@ -16,7 +16,13 @@ from shift_assistant.contracts import (
     VerificationIssue,
 )
 from shift_assistant.domain.models import Shift
-from shift_assistant.reliability.reporting import alternates, exclusions, fill_status
+from shift_assistant.reliability.reporting import (
+    alternates,
+    candidate_coverage,
+    coverage_summary,
+    exclusions,
+    fill_status,
+)
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.tools.evidence import EvidenceLedger
 from shift_assistant.tools.outreach import unit_label
@@ -74,24 +80,31 @@ class DeterministicFallback:
                     f"{clinicians[e.clinician_id].years_experience} years of experience."
                 ),
                 warnings=e.warnings,
+                credentials=e.credentials,
                 outreach=self._toolkit.create_draft(
                     shift, clinicians[e.clinician_id], FALLBACK_NOTE, e
                 ),
             )
             for rank, e in enumerate(shortlist, start=1)
         ]
+        eligible_alternates = alternates(evaluations, {r.clinician_id for r in recommendations})
+        excluded = exclusions(evaluations)
+        coverage = candidate_coverage(
+            recommendations, eligible_alternates, excluded, pool_ids=list(clinicians)
+        )
         return StaffingReport(
             request=request,
-            status=fill_status(len(recommendations), shift.positions_open),
+            status=fill_status(len(recommendations), len(eligible), shift.positions_open),
             mode=RunMode.FALLBACK,
             summary=(
-                f"Rule-based shortlist: {len(eligible)} of {len(evaluations)} candidates meet all "
-                "requirements, ranked by credential warnings, then experience."
+                f"{coverage_summary(coverage, shift.positions_open)} "
+                "Ranked by credential warnings, then experience."
             ),
             shift=self._toolkit.summarize(shift),
             recommendations=recommendations,
-            alternates=alternates(evaluations, {r.clinician_id for r in recommendations}),
-            excluded=exclusions(evaluations),
+            alternates=eligible_alternates,
+            excluded=excluded,
+            coverage=coverage,
             issues=[issue],
         )
 

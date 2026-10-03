@@ -6,13 +6,15 @@
 
 ## Summary
 
-Isabella Garcia and Liam Chen are the two eligible clinicians for this Bayview PICU night shift. Isabella is the stronger match because her profile includes pediatric ventilator management experience, which is a stated unit preference. Liam is also eligible, but he has a PALS expiration warning to track. Emma Davis was not recommended because her RN license is not valid in California.
+3 candidates evaluated, covering the shift's full candidate pool: 2 eligible, 1 excluded. 2 eligible clinicians shortlisted for 1 open position.
+
+**Agent notes:** For this Bayview PICU night shift, Isabella Garcia ranks first because she most closely matches the unit’s preferred pediatric critical care profile and has the strongest ventilator-management background without any credential warnings. Liam Chen is next because he meets the PICU experience requirement and has night availability, but his PALS renewal is coming due shortly after the shift. Emma Davis was not shortlisted because she is not eligible for California coverage for this assignment.
 
 ## Recommendations
 
 ### 1. Isabella Garcia (C-116)
 
-Best fit for Bayview PICU night shift: Isabella Garcia has 6 years in PICU/NICU, pediatric ventilator management experience, and family-centered care experience, which aligns with the unit's preference for pediatric ventilator management and its family-centered environment. She is eligible with no credential warnings.
+Isabella Garcia is the strongest match: she has 6 years across PICU and NICU, which aligns well with Bayview’s PICU preference for at least 2 years of pediatric critical care experience and strongly preferred pediatric ventilator management. She is eligible with no credential warnings, and her profile directly mentions pediatric ventilator management. Policy support: FAC-003#picu-unit-profile, GLOBAL#candidate-prioritization.
 - **Source:** `FAC-003#picu-unit-profile` (PICU unit profile)
 - **Source:** `GLOBAL#candidate-prioritization` (Candidate prioritization)
 
@@ -21,7 +23,7 @@ Best fit for Bayview PICU night shift: Isabella Garcia has 6 years in PICU/NICU,
 ```text
 Hi Isabella,
 
-Your PICU and NICU background fits Bayview's PICU, especially given your pediatric ventilator management experience and family-centered care experience. You also bring the strongest experience level among the eligible clinicians for this night shift.
+You stand out for this PICU assignment because you have 6 years across PICU and NICU and strong pediatric ventilator management experience. Your background fits the unit’s medical, surgical, and cardiac pediatric population well.
 
 Shift details
 - Facility: Bayview Children's Hospital (San Diego, CA)
@@ -37,7 +39,7 @@ Staffing Operations Team
 
 ### 2. Liam Chen (C-117)
 
-Liam Chen is eligible and matches the minimum PICU experience requirement with 2 years in pediatric critical care and availability for nights. He is a strong second choice, though his PALS expires 2026-11-10, so a renewal should be requested.
+Liam Chen is eligible and fits the shift well with 2 years of PICU experience and stated night availability, which matches the unit’s night coverage need. He meets the baseline PICU experience requirement, but he ranks behind Isabella because he has a credential warning: PALS expires 22 days after the shift. Policy support: FAC-003#picu-unit-profile, GLOBAL#candidate-prioritization.
 - **Warning:** PALS expires 2026-11-10, 22 days after the shift. Request a renewal.
 - **Source:** `FAC-003#picu-unit-profile` (PICU unit profile)
 - **Source:** `GLOBAL#candidate-prioritization` (Candidate prioritization)
@@ -47,7 +49,7 @@ Liam Chen is eligible and matches the minimum PICU experience requirement with 2
 ```text
 Hi Liam,
 
-Your PICU experience matches Bayview's PICU needs, and your profile notes availability for nights. You also meet the minimum 2 years of pediatric critical care experience called for on this unit.
+You’re a strong fit for this PICU night assignment with 2 years of PICU experience and comfort caring for post-operative pediatric patients. Your night availability also matches the shift.
 
 Shift details
 - Facility: Bayview Children's Hospital (San Diego, CA)
@@ -77,21 +79,19 @@ All references were verified against tool evidence.
 ## Trace
 
 ```text
-[ 1] llm:model ok 1526ms | Planned: find_open_shifts
+[ 1] llm:model ok 1555ms | Planned: find_open_shifts
 [ 2] tool:find_open_shifts ok 1ms | {"facility": "Bayview", "unit": "PICU", "start_date": "2026-10-18", "shift_id": null}
-[ 3] llm:model ok 3898ms | Planned: search_facility_policies, search_facility_policies
-[ 4] tool:search_facility_policies ok 38ms | {"facility_id": "FAC-003", "query": "PICU unit preferences, required certifications, patient acuity, and clinician traits preferred for Bayview Children's Hospital PICU night shifts", "top_k": 4}
-[ 5] tool:search_facility_policies ok 18ms | {"facility_id": "FAC-003", "query": "night shift arrival logistics and outreach rules for Bayview Children's Hospital", "top_k": 4}
-[ 6] llm:model ok 1357ms | Planned: search_clinicians
-[ 7] tool:search_clinicians ok 34ms | {"shift_id": "SHF-3001", "query": "PICU night shift pediatric critical care, ventilator experience, California RN, BLS, PALS", "limit": 10}
-[ 8] llm:model ok 1425ms | Planned: evaluate_candidates
-[ 9] tool:evaluate_candidates ok 1ms | {"shift_id": "SHF-3001", "clinician_ids": ["C-117", "C-116", "C-118"]}
-[10] llm:model ok 3877ms | Planned: draft_outreach, draft_outreach
-[11] tool:draft_outreach ok 1ms | {"shift_id": "SHF-3001", "clinician_id": "C-116", "personal_note": "Your PICU and NICU background fits Bayview's PICU, especially given your pediatric ventilator management experience and family-cente...
-[12] tool:draft_outreach ok 1ms | {"shift_id": "SHF-3001", "clinician_id": "C-117", "personal_note": "Your PICU experience matches Bayview's PICU needs, and your profile notes availability for nights. You also meet the minimum 2 years...
-[13] llm:model ok 3558ms | Planned: submit_recommendation
-[14] validation:submit_recommendation ok 0ms | Submission accepted.
-[15] verification:grounding ok 0ms | 2 recommendation(s) verified; 0 issue(s) enforced.
+[ 3] llm:model ok 2699ms | Planned: search_facility_policies, search_clinicians
+[ 4] tool:search_facility_policies ok 33ms | {"facility_id": "FAC-003", "query": "PICU unit preferences, night shift arrival logistics, outreach rules, pediatric critical care certifications or experience preferences", "top_k": 5}
+[ 5] tool:search_clinicians ok 24ms | {"shift_id": "SHF-3001", "query": "PICU night shift, pediatric critical care, night availability, RN", "limit": 10}
+[ 6] llm:model ok 1534ms | Planned: evaluate_candidates
+[ 7] tool:evaluate_candidates ok 1ms | {"shift_id": "SHF-3001", "clinician_ids": ["C-117", "C-116", "C-118"]}
+[ 8] llm:model ok 2159ms | Planned: draft_outreach, draft_outreach
+[ 9] tool:draft_outreach ok 1ms | {"shift_id": "SHF-3001", "clinician_id": "C-116", "personal_note": "You stand out for this PICU assignment because you have 6 years across PICU and NICU and strong pediatric ventilator management expe...
+[10] tool:draft_outreach ok 1ms | {"shift_id": "SHF-3001", "clinician_id": "C-117", "personal_note": "You\u2019re a strong fit for this PICU night assignment with 2 years of PICU experience and comfort caring for post-operative pediat...
+[11] llm:model ok 2531ms | Planned: submit_recommendation
+[12] validation:submit_recommendation ok 0ms | Submission accepted.
+[13] verification:grounding ok 0ms | 2 recommendation(s) verified; 0 issue(s) enforced.
 ```
 
-6 LLM calls, 7 tool calls, 14951 tokens, 15.8s.
+5 LLM calls, 6 tool calls, 11973 tokens, 10.6s.

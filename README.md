@@ -70,7 +70,7 @@ flowchart LR
 | **Agent workflow** with multi-step reasoning, tool calling and context management | A LangGraph ReAct loop (`agent` and `tools` nodes) with typed state. The model chooses tools, with parallel calls allowed. The workflow ends only through a validated `submit_recommendation` tool call, enforced by `tool_choice="required"`. |
 | **Tools** (at least 2 or 3) | `find_open_shifts`, `search_facility_policies`, `search_clinicians`, `evaluate_candidates` and `draft_outreach`, plus the submit tool. All data is mocked. |
 | **Retrieval and context engineering** | **RAG** over facility handbooks, one chunk per `##` section, which gives stable citation IDs such as `FAC-001#icu-unit-profile`. **Embeddings and vector search** use local `bge-small` via fastembed. **Context filtering**: a facility only ever sees its own policies plus global ones, through a metadata pre-filter. **PII minimisation**: tools never expose emails, phone numbers or license numbers. **Memory and state**: an `EvidenceLedger` records every fact the tools returned in the run, and tool output is size-capped. |
-| **Structured outputs** | The final answer is a Pydantic `AgentSubmission` passed as tool arguments. The public output is a typed `StaffingReport` with recommendations, alternates, exclusions with reason codes, issues, trace and metrics. |
+| **Structured outputs** | The final answer is a Pydantic `AgentSubmission` passed as tool arguments. The public output is a typed `StaffingReport` with recommendations, alternates, exclusions with reason codes, candidate coverage counts, issues, trace and metrics. Code writes the summary from the verified lists, so counts never contradict them. |
 | **Reliability** | See the next section. |
 
 ## Reliability and hallucination mitigation
@@ -181,5 +181,6 @@ bookings and 4 policy handbooks. Each clinician exercises a specific rule, for e
   limits, and a HIPAA and PII review of what reaches the LLM provider.
 - **Conversation memory.** A LangGraph checkpointer would let a coordinator answer the
   clarifying question in the same thread.
-- **Human in the loop.** I would add an approve-and-send step for drafts, with an audit record of
-  who sent what.
+- **Human in the loop.** The UI already lets a coordinator edit and approve each draft, but
+  delivery is simulated. I would connect it to a real messaging channel and keep an audit record
+  of who approved and sent what.

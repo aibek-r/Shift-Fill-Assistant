@@ -117,7 +117,10 @@ class StaffingToolkit:
             SearchCliniciansResult(
                 shift_id=shift.id, candidates_in_pool=len(pool), candidates=profiles
             ),
-            EvidenceLedger.of(searched_candidates={shift.id: [p.clinician_id for p in profiles]}),
+            EvidenceLedger.of(
+                searched_candidates={shift.id: [p.clinician_id for p in profiles]},
+                candidate_pools={shift.id: list(pool)},
+            ),
         )
 
     def evaluate_candidates(self, args: EvaluateCandidatesArgs) -> ToolOutput:
@@ -168,6 +171,7 @@ class StaffingToolkit:
             eligible=result.eligible,
             blockers=result.blockers,
             warnings=result.warnings,
+            credentials=result.credentials,
         )
 
     def create_draft(

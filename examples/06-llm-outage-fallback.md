@@ -6,7 +6,7 @@
 
 ## Summary
 
-Rule-based shortlist: 2 of 3 candidates meet all requirements, ranked by credential warnings, then experience.
+3 candidates evaluated, covering the shift's full candidate pool: 2 eligible, 1 excluded. 2 eligible clinicians shortlisted for 2 open positions. Ranked by credential warnings, then experience.
 
 ## Recommendations
 

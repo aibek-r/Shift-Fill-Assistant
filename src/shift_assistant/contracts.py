@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from shift_assistant.domain.eligibility import Finding
+from shift_assistant.domain.eligibility import CredentialCheck, Finding
 from shift_assistant.tools.schemas import OutreachDraft, PolicyExcerpt, ShiftSummary
 
 
@@ -62,6 +62,7 @@ class CandidateRecommendation(BaseModel):
     clinician_name: str
     rationale: str
     warnings: list[Finding] = []
+    credentials: list[CredentialCheck] = []
     citations: list[PolicyExcerpt] = []
     outreach: OutreachDraft | None = None
 
@@ -70,6 +71,7 @@ class ExcludedCandidate(BaseModel):
     clinician_id: str
     clinician_name: str
     reasons: list[Finding]
+    credentials: list[CredentialCheck] = []
 
 
 class AlternateCandidate(BaseModel):
@@ -78,6 +80,29 @@ class AlternateCandidate(BaseModel):
     clinician_id: str
     clinician_name: str
     warnings: list[Finding] = []
+    credentials: list[CredentialCheck] = []
+
+
+class CandidateCoverage(BaseModel):
+    """Candidate counts computed by code from verified evaluations, never written by the model."""
+
+    pool_size: int | None = Field(
+        default=None,
+        description="Clinicians whose role and specialty fit the shift; None if never searched.",
+    )
+    evaluated: int = 0
+    eligible: int = 0
+    recommended: int = 0
+    alternates: int = 0
+    excluded: int = 0
+    unevaluated_ids: list[str] = Field(
+        default=[], description="Pool clinicians that were never compliance-checked."
+    )
+    removed_by_verification: int = 0
+
+    @property
+    def full_pool_evaluated(self) -> bool:
+        return self.pool_size is not None and not self.unevaluated_ids
 
 
 class RunMetrics(BaseModel):
@@ -92,11 +117,16 @@ class StaffingReport(BaseModel):
     request: StaffingRequest
     status: ReportStatus
     mode: RunMode
-    summary: str
+    summary: str = Field(description="Built by code from the verified report, except when asking.")
+    agent_notes: str | None = Field(
+        default=None,
+        description="The agent's ranking notes; dropped when verification changed its shortlist.",
+    )
     shift: ShiftSummary | None = None
     recommendations: list[CandidateRecommendation] = []
     alternates: list[AlternateCandidate] = []
     excluded: list[ExcludedCandidate] = []
+    coverage: CandidateCoverage | None = None
     clarification_question: str | None = None
     issues: list[VerificationIssue] = []
     trace: list[TraceEvent] = []

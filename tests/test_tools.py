@@ -63,6 +63,19 @@ def test_evaluation_reports_unknown_ids_separately(registry: ToolRegistry) -> No
     assert [e["clinician_id"] for e in payload["evaluations"]] == ["C-101"]
 
 
+def test_pool_and_credential_checks_are_evidence_not_model_context(
+    registry: ToolRegistry,
+) -> None:
+    search = registry.execute("search_clinicians", {"shift_id": "SHF-1001", "limit": 2})
+    evaluation = registry.execute(
+        "evaluate_candidates", {"shift_id": "SHF-1001", "clinician_ids": ["C-101"]}
+    )
+
+    assert len(search.evidence.candidate_pools["SHF-1001"]) == 9  # whole pool, not just top 2
+    assert "credentials" not in json.loads(evaluation.content)["evaluations"][0]
+    assert evaluation.evidence.evaluations["SHF-1001/C-101"].credentials
+
+
 def test_outreach_is_refused_for_ineligible_clinicians(registry: ToolRegistry) -> None:
     result = registry.execute(
         "draft_outreach",

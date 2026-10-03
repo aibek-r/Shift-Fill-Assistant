@@ -50,6 +50,26 @@ class Finding(BaseModel):
     credential: CredentialType | None = None
 
 
+class CredentialStatus(StrEnum):
+    VALID_THROUGH_SHIFT = "valid_through_shift"
+    EXPIRING_SOON = "expiring_soon"  # valid through the shift, but inside the warning window
+    EXPIRES_BEFORE_SHIFT_END = "expires_before_shift_end"
+    MISSING = "missing"
+    NOT_VALID_IN_STATE = "not_valid_in_state"
+
+
+class CredentialCheck(BaseModel):
+    """Outcome for one required credential. Only expiry and jurisdiction are verified; the
+    mock system of record has no issuer status field to confirm a credential is active."""
+
+    model_config = ConfigDict(frozen=True)
+
+    type: CredentialType
+    status: CredentialStatus
+    expires_on: date | None = None
+    jurisdiction: str | None = None
+
+
 class EligibilityResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -57,6 +77,7 @@ class EligibilityResult(BaseModel):
     shift_id: str
     blockers: list[Finding]
     warnings: list[Finding]
+    credentials: list[CredentialCheck] = []
 
     @property
     def eligible(self) -> bool:
@@ -76,6 +97,7 @@ class EligibilityEngine:
     ) -> EligibilityResult:
         blockers: list[Finding] = []
         warnings: list[Finding] = []
+        credentials: list[CredentialCheck] = []
 
         blockers.extend(self._profile_blockers(clinician, shift))
         requirement = facility.units.get(shift.unit)
@@ -97,13 +119,19 @@ class EligibilityEngine:
                         ),
                     )
                 )
-            for finding in self._credential_findings(clinician, shift, facility, requirement):
-                is_warning = finding.code is CheckCode.CREDENTIAL_EXPIRING_SOON
-                (warnings if is_warning else blockers).append(finding)
+            for check, finding in self._credential_checks(clinician, shift, facility, requirement):
+                credentials.append(check)
+                if finding is not None:
+                    is_warning = finding.code is CheckCode.CREDENTIAL_EXPIRING_SOON
+                    (warnings if is_warning else blockers).append(finding)
         blockers.extend(self._schedule_blockers(shift, facility, bookings))
 
         return EligibilityResult(
-            clinician_id=clinician.id, shift_id=shift.id, blockers=blockers, warnings=warnings
+            clinician_id=clinician.id,
+            shift_id=shift.id,
+            blockers=blockers,
+            warnings=warnings,
+            credentials=credentials,
         )
 
     @staticmethod
@@ -123,40 +151,60 @@ class EligibilityEngine:
                 message=f"No {shift.unit} specialty on profile.",
             )
 
-    def _credential_findings(
+    def _credential_checks(
         self,
         clinician: Clinician,
         shift: Shift,
         facility: Facility,
         requirement: UnitRequirement,
-    ) -> Iterator[Finding]:
-        # A credential must stay active through the (facility-local) date the shift ends.
+    ) -> Iterator[tuple[CredentialCheck, Finding | None]]:
+        # A credential must stay valid through the (facility-local) date the shift ends.
         must_be_valid_on = shift.end.date()
         for credential_type in requirement.required_credentials:
             held = clinician.credentials_of(credential_type)
             if credential_type is CredentialType.RN_LICENSE:
                 usable = [c for c in held if _license_valid_in(c, facility)]
                 if held and not usable:
-                    yield Finding(
-                        code=CheckCode.LICENSE_NOT_VALID_IN_STATE,
-                        message=_license_mismatch_message(held, facility),
-                        credential=credential_type,
+                    yield (
+                        CredentialCheck(
+                            type=credential_type,
+                            status=CredentialStatus.NOT_VALID_IN_STATE,
+                            jurisdiction=", ".join(sorted({c.jurisdiction or "?" for c in held})),
+                        ),
+                        Finding(
+                            code=CheckCode.LICENSE_NOT_VALID_IN_STATE,
+                            message=_license_mismatch_message(held, facility),
+                            credential=credential_type,
+                        ),
                     )
                     continue
                 held = usable
             if not held:
-                yield Finding(
-                    code=CheckCode.MISSING_CREDENTIAL,
-                    message=f"No {credential_type} on file.",
-                    credential=credential_type,
+                yield (
+                    CredentialCheck(type=credential_type, status=CredentialStatus.MISSING),
+                    Finding(
+                        code=CheckCode.MISSING_CREDENTIAL,
+                        message=f"No {credential_type} on file.",
+                        credential=credential_type,
+                    ),
                 )
                 continue
             latest = max(held, key=lambda c: c.expires_on)
-            yield from self._expiry_findings(latest, must_be_valid_on)
+            yield self._expiry_check(latest, must_be_valid_on)
 
-    def _expiry_findings(self, credential: Credential, valid_through: date) -> Iterator[Finding]:
+    def _expiry_check(
+        self, credential: Credential, valid_through: date
+    ) -> tuple[CredentialCheck, Finding | None]:
+        def check(status: CredentialStatus) -> CredentialCheck:
+            return CredentialCheck(
+                type=credential.type,
+                status=status,
+                expires_on=credential.expires_on,
+                jurisdiction=credential.jurisdiction,
+            )
+
         if credential.expires_on < valid_through:
-            yield Finding(
+            return check(CredentialStatus.EXPIRES_BEFORE_SHIFT_END), Finding(
                 code=CheckCode.CREDENTIAL_EXPIRED,
                 message=(
                     f"{credential.type} expires {credential.expires_on}, "
@@ -164,9 +212,9 @@ class EligibilityEngine:
                 ),
                 credential=credential.type,
             )
-        elif credential.expires_on <= valid_through + self._warning_window:
+        if credential.expires_on <= valid_through + self._warning_window:
             days_left = (credential.expires_on - valid_through).days
-            yield Finding(
+            return check(CredentialStatus.EXPIRING_SOON), Finding(
                 code=CheckCode.CREDENTIAL_EXPIRING_SOON,
                 message=(
                     f"{credential.type} expires {credential.expires_on}, "
@@ -174,6 +222,7 @@ class EligibilityEngine:
                 ),
                 credential=credential.type,
             )
+        return check(CredentialStatus.VALID_THROUGH_SHIFT), None
 
     @staticmethod
     def _schedule_blockers(

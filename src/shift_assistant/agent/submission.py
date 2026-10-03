@@ -45,8 +45,10 @@ class AgentSubmission(BaseModel):
         min_length=10,
         max_length=1000,
         description=(
-            "2-4 sentences for the coordinator. Name every eligible clinician you did not "
-            "recommend and why."
+            "2-4 sentences for the coordinator. When completed: your ranking judgement, i.e. why "
+            "the shortlisted clinicians come first and why each eligible clinician you did not "
+            "shortlist ranks lower. Do not state how many clinicians were evaluated, eligible or "
+            "excluded; the report adds verified counts. When asking: what you found."
         ),
     )
     clarification_question: str | None = Field(

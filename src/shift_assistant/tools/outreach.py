@@ -58,6 +58,7 @@ def render_outreach(
         draft_id=draft_id_for(shift.shift_id, clinician.id),
         shift_id=shift.shift_id,
         clinician_id=clinician.id,
+        personal_note=personal_note.strip(),
         subject=subject,
         body="\n".join(lines),
     )

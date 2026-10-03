@@ -24,6 +24,7 @@ class EvidenceLedger(BaseModel):
     shifts: dict[str, ShiftSummary] = {}
     policy_excerpts: dict[str, PolicyExcerpt] = {}
     searched_candidates: dict[str, list[str]] = {}  # shift_id -> clinician IDs surfaced
+    candidate_pools: dict[str, list[str]] = {}  # shift_id -> every role and specialty match
     evaluations: dict[str, CandidateEvaluation] = {}  # keyed by evaluation_key()
     drafts: dict[str, OutreachDraft] = {}
 
@@ -38,6 +39,7 @@ class EvidenceLedger(BaseModel):
         shifts: Sequence[ShiftSummary] = (),
         policy_excerpts: Sequence[PolicyExcerpt] = (),
         searched_candidates: Mapping[str, Sequence[str]] | None = None,
+        candidate_pools: Mapping[str, Sequence[str]] | None = None,
         evaluations: Sequence[CandidateEvaluation] = (),
         drafts: Sequence[OutreachDraft] = (),
     ) -> EvidenceLedger:
@@ -45,6 +47,7 @@ class EvidenceLedger(BaseModel):
             shifts={s.shift_id: s for s in shifts},
             policy_excerpts={p.chunk_id: p for p in policy_excerpts},
             searched_candidates={k: list(v) for k, v in (searched_candidates or {}).items()},
+            candidate_pools={k: list(v) for k, v in (candidate_pools or {}).items()},
             evaluations={cls.evaluation_key(e.shift_id, e.clinician_id): e for e in evaluations},
             drafts={d.draft_id: d for d in drafts},
         )
@@ -57,6 +60,7 @@ class EvidenceLedger(BaseModel):
             shifts={**self.shifts, **other.shifts},
             policy_excerpts={**self.policy_excerpts, **other.policy_excerpts},
             searched_candidates=searched,
+            candidate_pools={**self.candidate_pools, **other.candidate_pools},
             evaluations={**self.evaluations, **other.evaluations},
             drafts={**self.drafts, **other.drafts},
         )

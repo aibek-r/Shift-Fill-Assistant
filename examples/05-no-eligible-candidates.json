@@ -5,7 +5,8 @@
   },
   "status": "no_eligible_candidates",
   "mode": "agent",
-  "summary": "No clinicians are eligible for SHF-3002. Isabella Garcia was blocked because her NRP expires before the shift ends, Ava Thompson does not meet the NICU minimum experience requirement, and Lucas Moore’s RN license expires before the shift ends. The shift remains unfilled.",
+  "summary": "3 candidates evaluated, covering the shift's full candidate pool: 0 eligible, 3 excluded. Nobody is eligible, so no one was shortlisted.",
+  "agent_notes": "The shift is a Bayview Children's Hospital NICU day assignment on 2026-10-19. The candidate pool did not produce any eligible clinician once licensure, certification, and experience were checked against the NICU requirements, so there is no safe recommendation to send forward.",
   "shift": {
     "shift_id": "SHF-3002",
     "facility_id": "FAC-003",
@@ -31,6 +32,26 @@
           "message": "NRP expires 2026-09-30, before the shift ends on 2026-10-19.",
           "credential": "NRP"
         }
+      ],
+      "credentials": [
+        {
+          "type": "RN_LICENSE",
+          "status": "valid_through_shift",
+          "expires_on": "2028-05-31",
+          "jurisdiction": "CA"
+        },
+        {
+          "type": "BLS",
+          "status": "valid_through_shift",
+          "expires_on": "2027-07-31",
+          "jurisdiction": null
+        },
+        {
+          "type": "NRP",
+          "status": "expires_before_shift_end",
+          "expires_on": "2026-09-30",
+          "jurisdiction": null
+        }
       ]
     },
     {
@@ -41,6 +62,26 @@
           "code": "INSUFFICIENT_EXPERIENCE",
           "message": "1 years of experience; NICU requires 2.",
           "credential": null
+        }
+      ],
+      "credentials": [
+        {
+          "type": "RN_LICENSE",
+          "status": "valid_through_shift",
+          "expires_on": "2028-02-29",
+          "jurisdiction": "CA"
+        },
+        {
+          "type": "BLS",
+          "status": "valid_through_shift",
+          "expires_on": "2027-08-31",
+          "jurisdiction": null
+        },
+        {
+          "type": "NRP",
+          "status": "valid_through_shift",
+          "expires_on": "2027-08-31",
+          "jurisdiction": null
         }
       ]
     },
@@ -53,9 +94,39 @@
           "message": "RN_LICENSE expires 2026-08-31, before the shift ends on 2026-10-19.",
           "credential": "RN_LICENSE"
         }
+      ],
+      "credentials": [
+        {
+          "type": "RN_LICENSE",
+          "status": "expires_before_shift_end",
+          "expires_on": "2026-08-31",
+          "jurisdiction": "CA"
+        },
+        {
+          "type": "BLS",
+          "status": "valid_through_shift",
+          "expires_on": "2027-04-30",
+          "jurisdiction": null
+        },
+        {
+          "type": "NRP",
+          "status": "valid_through_shift",
+          "expires_on": "2027-04-30",
+          "jurisdiction": null
+        }
       ]
     }
   ],
+  "coverage": {
+    "pool_size": 3,
+    "evaluated": 3,
+    "eligible": 0,
+    "recommended": 0,
+    "alternates": 0,
+    "excluded": 3,
+    "unevaluated_ids": [],
+    "removed_by_verification": 0
+  },
   "clarification_question": null,
   "issues": [],
   "trace": [
@@ -65,9 +136,9 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: find_open_shifts",
-      "duration_ms": 1042,
-      "input_tokens": 1272,
-      "output_tokens": 52
+      "duration_ms": 1143,
+      "input_tokens": 1332,
+      "output_tokens": 42
     },
     {
       "step": 2,
@@ -85,17 +156,17 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: search_facility_policies, search_clinicians",
-      "duration_ms": 4052,
-      "input_tokens": 1438,
-      "output_tokens": 141
+      "duration_ms": 1574,
+      "input_tokens": 1488,
+      "output_tokens": 98
     },
     {
       "step": 4,
       "kind": "tool",
       "name": "search_facility_policies",
       "ok": true,
-      "detail": "{\"facility_id\": \"FAC-003\", \"query\": \"NICU unit preferences, day shift arrival logistics, outreach rules\", \"top_k\": 5}",
-      "duration_ms": 23,
+      "detail": "{\"facility_id\": \"FAC-003\", \"query\": \"NICU unit preferences and day shift arrival logistics\", \"top_k\": 4}",
+      "duration_ms": 8,
       "input_tokens": null,
       "output_tokens": null
     },
@@ -104,8 +175,8 @@
       "kind": "tool",
       "name": "search_clinicians",
       "ok": true,
-      "detail": "{\"shift_id\": \"SHF-3002\", \"query\": \"NICU RN day shift, neonatal experience, day shift preference\", \"limit\": 10}",
-      "duration_ms": 23,
+      "detail": "{\"shift_id\": \"SHF-3002\", \"query\": \"NICU RN day shift, neonatal care, Bayview Children's preferences\", \"limit\": 10}",
+      "duration_ms": 8,
       "input_tokens": null,
       "output_tokens": null
     },
@@ -115,9 +186,9 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: evaluate_candidates",
-      "duration_ms": 1311,
-      "input_tokens": 2262,
-      "output_tokens": 52
+      "duration_ms": 1354,
+      "input_tokens": 2173,
+      "output_tokens": 91
     },
     {
       "step": 7,
@@ -135,9 +206,9 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: submit_recommendation",
-      "duration_ms": 1976,
-      "input_tokens": 2558,
-      "output_tokens": 113
+      "duration_ms": 1365,
+      "input_tokens": 2508,
+      "output_tokens": 131
     },
     {
       "step": 9,
@@ -163,8 +234,8 @@
   "metrics": {
     "llm_calls": 4,
     "tool_calls": 4,
-    "input_tokens": 7530,
-    "output_tokens": 358,
-    "duration_ms": 8450
+    "input_tokens": 7501,
+    "output_tokens": 362,
+    "duration_ms": 5470
   }
 }

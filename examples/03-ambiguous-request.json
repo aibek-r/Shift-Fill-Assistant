@@ -5,12 +5,14 @@
   },
   "status": "needs_clarification",
   "mode": "agent",
-  "summary": "I found two open ICU RN shifts at St. Mary's Medical Center, but neither is during next week: SHF-1001 on 2026-10-14 19:00-07:00 (2 positions) and SHF-1003 on 2026-10-16 07:00-19:00 (1 position).",
+  "summary": "I found two open ICU RN shifts at St. Mary's Medical Center, but neither falls in the calendar week of 2026-10-05 to 2026-10-11. Please confirm whether you want the night ICU shift on 2026-10-14 (SHF-1001) or the day ICU shift on 2026-10-16 (SHF-1003), or if you meant the next available ICU shift instead.",
+  "agent_notes": null,
   "shift": null,
   "recommendations": [],
   "alternates": [],
   "excluded": [],
-  "clarification_question": "Did you mean one of these ICU shifts at St. Mary's Medical Center, or a different next-week date range? Options: SHF-1001 (night, 2026-10-14 19:00-07:00, 2 positions open) and SHF-1003 (day, 2026-10-16 07:00-19:00, 1 position open).",
+  "coverage": null,
+  "clarification_question": "Did you mean the night ICU RN shift on 2026-10-14 (SHF-1001) or the day ICU RN shift on 2026-10-16 (SHF-1003), or should I look for the next available ICU shift instead?",
   "issues": [],
   "trace": [
     {
@@ -19,9 +21,9 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: find_open_shifts",
-      "duration_ms": 2152,
-      "input_tokens": 1267,
-      "output_tokens": 169
+      "duration_ms": 1174,
+      "input_tokens": 1327,
+      "output_tokens": 148
     },
     {
       "step": 2,
@@ -39,9 +41,9 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: submit_recommendation",
-      "duration_ms": 2683,
-      "input_tokens": 1641,
-      "output_tokens": 278
+      "duration_ms": 2007,
+      "input_tokens": 1680,
+      "output_tokens": 303
     },
     {
       "step": 4,
@@ -67,8 +69,8 @@
   "metrics": {
     "llm_calls": 2,
     "tool_calls": 1,
-    "input_tokens": 2908,
-    "output_tokens": 447,
-    "duration_ms": 4848
+    "input_tokens": 3007,
+    "output_tokens": 451,
+    "duration_ms": 3191
   }
 }
