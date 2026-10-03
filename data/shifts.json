@@ -1,0 +1,9 @@
+[
+  {"id": "SHF-1001", "facility_id": "FAC-001", "unit": "ICU", "role": "RN", "start": "2026-10-14T19:00:00-05:00", "end": "2026-10-15T07:00:00-05:00", "positions_open": 2},
+  {"id": "SHF-1002", "facility_id": "FAC-001", "unit": "ED", "role": "RN", "start": "2026-10-15T07:00:00-05:00", "end": "2026-10-15T19:00:00-05:00", "positions_open": 1},
+  {"id": "SHF-1003", "facility_id": "FAC-001", "unit": "ICU", "role": "RN", "start": "2026-10-16T07:00:00-05:00", "end": "2026-10-16T19:00:00-05:00", "positions_open": 1},
+  {"id": "SHF-2001", "facility_id": "FAC-002", "unit": "MED_SURG", "role": "RN", "start": "2026-10-16T07:00:00-06:00", "end": "2026-10-16T19:00:00-06:00", "positions_open": 2},
+  {"id": "SHF-2002", "facility_id": "FAC-002", "unit": "TELEMETRY", "role": "RN", "start": "2026-10-17T19:00:00-06:00", "end": "2026-10-18T07:00:00-06:00", "positions_open": 1},
+  {"id": "SHF-3001", "facility_id": "FAC-003", "unit": "PICU", "role": "RN", "start": "2026-10-18T19:00:00-07:00", "end": "2026-10-19T07:00:00-07:00", "positions_open": 1},
+  {"id": "SHF-3002", "facility_id": "FAC-003", "unit": "NICU", "role": "RN", "start": "2026-10-19T07:00:00-07:00", "end": "2026-10-19T19:00:00-07:00", "positions_open": 1}
+]

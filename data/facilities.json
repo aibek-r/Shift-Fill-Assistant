@@ -1,0 +1,42 @@
+[
+  {
+    "id": "FAC-001",
+    "name": "St. Mary's Medical Center",
+    "city": "Austin",
+    "state": "TX",
+    "timezone": "America/Chicago",
+    "accepts_compact_license": true,
+    "min_rest_hours": 10,
+    "units": {
+      "ICU": {"required_credentials": ["RN_LICENSE", "BLS", "ACLS"], "min_years_experience": 2},
+      "ED": {"required_credentials": ["RN_LICENSE", "BLS", "ACLS", "PALS", "TNCC"], "min_years_experience": 2},
+      "TELEMETRY": {"required_credentials": ["RN_LICENSE", "BLS", "ACLS"], "min_years_experience": 1}
+    }
+  },
+  {
+    "id": "FAC-002",
+    "name": "Lakeside Community Hospital",
+    "city": "Denver",
+    "state": "CO",
+    "timezone": "America/Denver",
+    "accepts_compact_license": true,
+    "min_rest_hours": 8,
+    "units": {
+      "MED_SURG": {"required_credentials": ["RN_LICENSE", "BLS"], "min_years_experience": 1},
+      "TELEMETRY": {"required_credentials": ["RN_LICENSE", "BLS", "ACLS"], "min_years_experience": 1}
+    }
+  },
+  {
+    "id": "FAC-003",
+    "name": "Bayview Children's Hospital",
+    "city": "San Diego",
+    "state": "CA",
+    "timezone": "America/Los_Angeles",
+    "accepts_compact_license": false,
+    "min_rest_hours": 10,
+    "units": {
+      "PICU": {"required_credentials": ["RN_LICENSE", "BLS", "PALS"], "min_years_experience": 2},
+      "NICU": {"required_credentials": ["RN_LICENSE", "BLS", "NRP"], "min_years_experience": 2}
+    }
+  }
+]

@@ -1,0 +1,74 @@
+{
+  "request": {
+    "text": "Find a nurse for Mercy General tomorrow night.",
+    "shift_id": null
+  },
+  "status": "needs_clarification",
+  "mode": "agent",
+  "summary": "I couldn’t match “Mercy General” to any known facility in the system. The available facilities are St. Mary’s Medical Center (FAC-001), Lakeside Community Hospital (FAC-002), and Bayview Children’s Hospital (FAC-003).",
+  "shift": null,
+  "recommendations": [],
+  "alternates": [],
+  "excluded": [],
+  "clarification_question": "Which facility did you mean for tomorrow night: St. Mary’s Medical Center (FAC-001), Lakeside Community Hospital (FAC-002), or Bayview Children’s Hospital (FAC-003)?",
+  "issues": [],
+  "trace": [
+    {
+      "step": 1,
+      "kind": "llm",
+      "name": "model",
+      "ok": true,
+      "detail": "Planned: find_open_shifts",
+      "duration_ms": 1359,
+      "input_tokens": 1263,
+      "output_tokens": 90
+    },
+    {
+      "step": 2,
+      "kind": "tool",
+      "name": "find_open_shifts",
+      "ok": false,
+      "detail": "ERROR: No facility matches 'Mercy General'. Known facilities: St. Mary's Medical Center (FAC-001); Lakeside Community Hospital (FAC-002); Bayview Children's Hospital (FAC-003).",
+      "duration_ms": 0,
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "step": 3,
+      "kind": "llm",
+      "name": "model",
+      "ok": true,
+      "detail": "Planned: submit_recommendation",
+      "duration_ms": 2182,
+      "input_tokens": 1407,
+      "output_tokens": 191
+    },
+    {
+      "step": 4,
+      "kind": "validation",
+      "name": "submit_recommendation",
+      "ok": true,
+      "detail": "Submission accepted.",
+      "duration_ms": 0,
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "step": 5,
+      "kind": "verification",
+      "name": "grounding",
+      "ok": true,
+      "detail": "0 recommendation(s) verified; 0 issue(s) enforced.",
+      "duration_ms": 0,
+      "input_tokens": null,
+      "output_tokens": null
+    }
+  ],
+  "metrics": {
+    "llm_calls": 2,
+    "tool_calls": 1,
+    "input_tokens": 2670,
+    "output_tokens": 281,
+    "duration_ms": 3554
+  }
+}

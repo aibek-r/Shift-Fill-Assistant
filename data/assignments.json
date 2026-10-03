@@ -1,0 +1,5 @@
+[
+  {"id": "ASG-501", "clinician_id": "C-103", "facility_id": "FAC-001", "unit": "ICU", "start": "2026-10-14T07:00:00-05:00", "end": "2026-10-14T19:00:00-05:00"},
+  {"id": "ASG-502", "clinician_id": "C-109", "facility_id": "FAC-001", "unit": "ICU", "start": "2026-10-14T19:00:00-05:00", "end": "2026-10-15T07:00:00-05:00"},
+  {"id": "ASG-503", "clinician_id": "C-101", "facility_id": "FAC-002", "unit": "TELEMETRY", "start": "2026-10-17T19:00:00-06:00", "end": "2026-10-18T07:00:00-06:00"}
+]

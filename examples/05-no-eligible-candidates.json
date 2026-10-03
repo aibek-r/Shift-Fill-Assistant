@@ -1,0 +1,170 @@
+{
+  "request": {
+    "text": "We need a NICU nurse at Bayview Children's for the October 19 day shift.",
+    "shift_id": null
+  },
+  "status": "no_eligible_candidates",
+  "mode": "agent",
+  "summary": "No clinicians are eligible for SHF-3002. Isabella Garcia was blocked because her NRP expires before the shift ends, Ava Thompson does not meet the NICU minimum experience requirement, and Lucas Moore’s RN license expires before the shift ends. The shift remains unfilled.",
+  "shift": {
+    "shift_id": "SHF-3002",
+    "facility_id": "FAC-003",
+    "facility_name": "Bayview Children's Hospital",
+    "location": "San Diego, CA",
+    "unit": "NICU",
+    "role": "RN",
+    "period": "day",
+    "start": "2026-10-19T07:00:00-07:00",
+    "end": "2026-10-19T19:00:00-07:00",
+    "timezone": "America/Los_Angeles",
+    "positions_open": 1
+  },
+  "recommendations": [],
+  "alternates": [],
+  "excluded": [
+    {
+      "clinician_id": "C-116",
+      "clinician_name": "Isabella Garcia",
+      "reasons": [
+        {
+          "code": "CREDENTIAL_EXPIRED",
+          "message": "NRP expires 2026-09-30, before the shift ends on 2026-10-19.",
+          "credential": "NRP"
+        }
+      ]
+    },
+    {
+      "clinician_id": "C-119",
+      "clinician_name": "Ava Thompson",
+      "reasons": [
+        {
+          "code": "INSUFFICIENT_EXPERIENCE",
+          "message": "1 years of experience; NICU requires 2.",
+          "credential": null
+        }
+      ]
+    },
+    {
+      "clinician_id": "C-120",
+      "clinician_name": "Lucas Moore",
+      "reasons": [
+        {
+          "code": "CREDENTIAL_EXPIRED",
+          "message": "RN_LICENSE expires 2026-08-31, before the shift ends on 2026-10-19.",
+          "credential": "RN_LICENSE"
+        }
+      ]
+    }
+  ],
+  "clarification_question": null,
+  "issues": [],
+  "trace": [
+    {
+      "step": 1,
+      "kind": "llm",
+      "name": "model",
+      "ok": true,
+      "detail": "Planned: find_open_shifts",
+      "duration_ms": 1042,
+      "input_tokens": 1272,
+      "output_tokens": 52
+    },
+    {
+      "step": 2,
+      "kind": "tool",
+      "name": "find_open_shifts",
+      "ok": true,
+      "detail": "{\"facility\": \"Bayview Children's\", \"unit\": \"NICU\", \"start_date\": \"2026-10-19\", \"shift_id\": null}",
+      "duration_ms": 1,
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "step": 3,
+      "kind": "llm",
+      "name": "model",
+      "ok": true,
+      "detail": "Planned: search_facility_policies, search_clinicians",
+      "duration_ms": 4052,
+      "input_tokens": 1438,
+      "output_tokens": 141
+    },
+    {
+      "step": 4,
+      "kind": "tool",
+      "name": "search_facility_policies",
+      "ok": true,
+      "detail": "{\"facility_id\": \"FAC-003\", \"query\": \"NICU unit preferences, day shift arrival logistics, outreach rules\", \"top_k\": 5}",
+      "duration_ms": 23,
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "step": 5,
+      "kind": "tool",
+      "name": "search_clinicians",
+      "ok": true,
+      "detail": "{\"shift_id\": \"SHF-3002\", \"query\": \"NICU RN day shift, neonatal experience, day shift preference\", \"limit\": 10}",
+      "duration_ms": 23,
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "step": 6,
+      "kind": "llm",
+      "name": "model",
+      "ok": true,
+      "detail": "Planned: evaluate_candidates",
+      "duration_ms": 1311,
+      "input_tokens": 2262,
+      "output_tokens": 52
+    },
+    {
+      "step": 7,
+      "kind": "tool",
+      "name": "evaluate_candidates",
+      "ok": true,
+      "detail": "{\"shift_id\": \"SHF-3002\", \"clinician_ids\": [\"C-116\", \"C-119\", \"C-120\"]}",
+      "duration_ms": 1,
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "step": 8,
+      "kind": "llm",
+      "name": "model",
+      "ok": true,
+      "detail": "Planned: submit_recommendation",
+      "duration_ms": 1976,
+      "input_tokens": 2558,
+      "output_tokens": 113
+    },
+    {
+      "step": 9,
+      "kind": "validation",
+      "name": "submit_recommendation",
+      "ok": true,
+      "detail": "Submission accepted.",
+      "duration_ms": 0,
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "step": 10,
+      "kind": "verification",
+      "name": "grounding",
+      "ok": true,
+      "detail": "0 recommendation(s) verified; 0 issue(s) enforced.",
+      "duration_ms": 0,
+      "input_tokens": null,
+      "output_tokens": null
+    }
+  ],
+  "metrics": {
+    "llm_calls": 4,
+    "tool_calls": 4,
+    "input_tokens": 7530,
+    "output_tokens": 358,
+    "duration_ms": 8450
+  }
+}

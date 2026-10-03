@@ -1,0 +1,74 @@
+{
+  "request": {
+    "text": "Can you find an ICU nurse for St. Mary's next week?",
+    "shift_id": null
+  },
+  "status": "needs_clarification",
+  "mode": "agent",
+  "summary": "I found two open ICU RN shifts at St. Mary's Medical Center, but neither is during next week: SHF-1001 on 2026-10-14 19:00-07:00 (2 positions) and SHF-1003 on 2026-10-16 07:00-19:00 (1 position).",
+  "shift": null,
+  "recommendations": [],
+  "alternates": [],
+  "excluded": [],
+  "clarification_question": "Did you mean one of these ICU shifts at St. Mary's Medical Center, or a different next-week date range? Options: SHF-1001 (night, 2026-10-14 19:00-07:00, 2 positions open) and SHF-1003 (day, 2026-10-16 07:00-19:00, 1 position open).",
+  "issues": [],
+  "trace": [
+    {
+      "step": 1,
+      "kind": "llm",
+      "name": "model",
+      "ok": true,
+      "detail": "Planned: find_open_shifts",
+      "duration_ms": 2152,
+      "input_tokens": 1267,
+      "output_tokens": 169
+    },
+    {
+      "step": 2,
+      "kind": "tool",
+      "name": "find_open_shifts",
+      "ok": true,
+      "detail": "{\"facility\": \"St. Mary's\", \"unit\": \"ICU\", \"start_date\": null, \"shift_id\": null}",
+      "duration_ms": 1,
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "step": 3,
+      "kind": "llm",
+      "name": "model",
+      "ok": true,
+      "detail": "Planned: submit_recommendation",
+      "duration_ms": 2683,
+      "input_tokens": 1641,
+      "output_tokens": 278
+    },
+    {
+      "step": 4,
+      "kind": "validation",
+      "name": "submit_recommendation",
+      "ok": true,
+      "detail": "Submission accepted.",
+      "duration_ms": 0,
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "step": 5,
+      "kind": "verification",
+      "name": "grounding",
+      "ok": true,
+      "detail": "0 recommendation(s) verified; 0 issue(s) enforced.",
+      "duration_ms": 0,
+      "input_tokens": null,
+      "output_tokens": null
+    }
+  ],
+  "metrics": {
+    "llm_calls": 2,
+    "tool_calls": 1,
+    "input_tokens": 2908,
+    "output_tokens": 447,
+    "duration_ms": 4848
+  }
+}
