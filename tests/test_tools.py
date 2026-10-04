@@ -101,8 +101,9 @@ def test_outreach_rejects_pay_rates_in_the_note(registry: ToolRegistry) -> None:
         },
     )
 
-    assert not result.ok
-    assert "pay rates" in result.content
+    assert not result.ok and not result.evidence.drafts
+    assert 'Remove "$95 per hour": pay can\'t appear in outreach.' in result.content
+    assert 'Remove "$95 per hour": pay can\'t appear in outreach.' in result.note_violations
 
 
 def test_outreach_facts_come_from_the_system_of_record(registry: ToolRegistry) -> None:

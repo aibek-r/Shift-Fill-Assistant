@@ -30,7 +30,8 @@ from shift_assistant.reliability.reporting import (
 from shift_assistant.reliability.resolution import TodayIn, resolve_shift
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.tools.evidence import EvidenceLedger
-from shift_assistant.tools.facts import DEFAULT_NOTE, candidate_rationale
+from shift_assistant.tools.facts import candidate_rationale
+from shift_assistant.tools.notes import DEFAULT_NOTE
 from shift_assistant.tools.schemas import CandidateEvaluation
 from shift_assistant.tools.toolkit import StaffingToolkit
 

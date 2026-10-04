@@ -22,6 +22,10 @@ needed. They cover:
 - **Fallback shift resolution:** unique and multiple matches, unknown facilities, typed fields
   overriding text, yearless future and past dates, relative dates and facility time zones.
 - **Structured preferences:** absent, matching, conflicting and explicitly flexible preferences.
+- **Outreach notes:** every suggested sentence passes, notes in the writer's own words pass,
+  each blocked category is reported with the exact text, several violations in one note are
+  all listed, and both the model path (fix once, then the default note) and the coordinator
+  path use the same check.
 - **Reporting and review:** counts match the report lists, status completion conditions, edits
   revalidated, approval withdrawn on edit, and JSON exports matching saved state.
 - **UI:** headless Streamlit `AppTest` runs real widgets and callbacks, including needs_review

@@ -110,9 +110,10 @@ class ShiftFillAssistant:
     ) -> OutreachDraft:
         """Re-render a draft around a coordinator's edited note.
 
-        Runs the same validation and eligibility checks as the draft_outreach tool, so the shift
-        details and credential reminders still come from the system of record.
-        Raises ValueError with a readable message when the note or clinician is rejected.
+        Runs the same note rules and eligibility checks as the draft_outreach tool, so the shift
+        details and credential reminders still come from the system of record. Raises
+        NoteRejected, listing every violation, when the note breaks the content rules, and
+        ValueError with a readable message for other problems.
         """
         try:
             args = DraftOutreachArgs(

@@ -6,10 +6,9 @@ validation layer: malformed tool calls are rejected with a readable error the mo
 
 from __future__ import annotations
 
-import re
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from shift_assistant.domain.eligibility import CredentialCheck, Finding
 from shift_assistant.domain.models import Facility, Role, Shift, ShiftPeriod, Unit
@@ -168,36 +167,22 @@ class EvaluateCandidatesResult(_Result):
 
 # --- draft_outreach ----------------------------------------------------------------------------
 
-_PII_OR_PAY = re.compile(
-    r"[\w.+-]+@[\w-]+\.\w+"  # email address
-    r"|\+?\d[\d\s().-]{8,}\d"  # phone number
-    r"|\$\s?\d|\bper hour\b|/hr\b",  # pay rates (not allowed in first-touch outreach)
-    re.IGNORECASE,
-)
-
 
 class DraftOutreachArgs(_Args):
     shift_id: str
     clinician_id: str
     personal_note: str = Field(
-        min_length=20,
-        max_length=500,
+        max_length=2000,  # a hard input cap; the content rules allow at most 400 characters
         description=(
-            "Select 1-3 of these exact friendly sentences: 'We would love to have you on this "
-            "shift.'; 'Would you be interested in this shift?'; 'Thank you for considering this "
-            "opportunity.'; 'We would be happy to discuss this opportunity with you.'; "
-            "'We think you would fit this unit well.'. Recorded experience, a matching recorded "
-            "shift preference, shift logistics and credential reminders are added automatically. "
-            "Do not write facts, pay rates, contact details or other clinicians in this note."
+            "A short, friendly note in your own words: 1-4 sentences, at most 400 characters. "
+            "For example: 'We would love to have you on this shift.' Code adds recorded "
+            "experience, a matching recorded shift preference, shift logistics, the reply "
+            "deadline and credential reminders. The note must not contain pay or money, "
+            "numbers, dates or times, contact details, other clinicians' names, credentials or "
+            "qualifications, claims about the clinician (such as 'you prefer nights'), "
+            "logistics such as parking or where to report, or promises such as 'guaranteed'."
         ),
     )
-
-    @field_validator("personal_note")
-    @classmethod
-    def _no_pii_or_pay(cls, note: str) -> str:
-        if _PII_OR_PAY.search(note):
-            raise ValueError("must not contain contact details or pay rates")
-        return note
 
 
 class OutreachDraft(_Result):

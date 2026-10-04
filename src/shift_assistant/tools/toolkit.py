@@ -7,6 +7,7 @@ message is returned to the model so it can correct itself.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from pydantic import BaseModel
@@ -16,7 +17,8 @@ from shift_assistant.domain.models import Clinician, Facility, Shift
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.retrieval.knowledge import ClinicianProfileIndex, PolicyKnowledgeBase
 from shift_assistant.tools.evidence import EvidenceLedger
-from shift_assistant.tools.facts import period_fit, validate_personal_note
+from shift_assistant.tools.facts import period_fit
+from shift_assistant.tools.notes import NoteViolation, note_violations
 from shift_assistant.tools.outreach import render_outreach
 from shift_assistant.tools.schemas import (
     CandidateEvaluation,
@@ -38,6 +40,18 @@ from shift_assistant.tools.schemas import (
 
 class ToolInputError(ValueError):
     """A recoverable problem with tool arguments. The message is shown to the model."""
+
+
+class NoteRejected(ToolInputError):
+    """A personal note broke the content rules. Lists every violation with the exact text."""
+
+    def __init__(self, violations: Sequence[NoteViolation]) -> None:
+        self.violations = tuple(violations)
+        listed = "\n".join(f"- {v.message}" for v in self.violations)
+        super().__init__(
+            "personal_note was rejected. Rewrite it in your own words without these, then "
+            f"call draft_outreach again:\n{listed}"
+        )
 
 
 @dataclass(frozen=True)
@@ -191,10 +205,14 @@ class StaffingToolkit:
         personal_note: str,
         evaluation: CandidateEvaluation,
     ) -> OutreachDraft:
-        try:
-            validate_personal_note(personal_note)
-        except ValueError as exc:
-            raise ToolInputError(str(exc)) from exc
+        """Render a draft around a note that passed the content rules.
+
+        The same check covers model-written notes and coordinator edits, so neither the model
+        nor the UI is trusted to have filtered the note.
+        """
+        others = [c.name for c in self._repository.clinicians() if c.id != clinician.id]
+        if violations := note_violations(personal_note, others, recipient=clinician.name):
+            raise NoteRejected(violations)
         return render_outreach(self.summarize(shift), clinician, personal_note, evaluation.warnings)
 
     def policy_warnings(self, facility_id: str) -> list[str]:

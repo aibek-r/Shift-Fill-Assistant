@@ -7,7 +7,7 @@ is simulated: approving records the coordinator's decision and nothing is ever s
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -25,7 +25,7 @@ class DraftStatus(StrEnum):
 class DraftReview:
     draft: OutreachDraft
     status: DraftStatus = DraftStatus.PENDING
-    error: str | None = None  # why the last edited note was rejected
+    problems: tuple[str, ...] = ()  # why the last edited note was rejected, one per violation
 
 
 class OutreachReview:
@@ -70,11 +70,12 @@ class OutreachReview:
     def start_editing(self, draft_id: str) -> None:
         """Editing withdraws any earlier approval: the coordinator must approve the new text."""
         entry = self._entries[draft_id]
-        entry.status, entry.error = DraftStatus.EDITING, None
+        entry.status, entry.problems = DraftStatus.EDITING, ()
 
     def cancel_editing(self, draft_id: str) -> None:
+        """Discard the edit; the saved draft and its note stay as they were."""
         entry = self._entries[draft_id]
-        entry.status, entry.error = DraftStatus.PENDING, None
+        entry.status, entry.problems = DraftStatus.PENDING, ()
 
     def save(self, draft_id: str, revised: OutreachDraft) -> None:
         """Store a draft re-rendered (and so revalidated) around the edited note."""
@@ -85,10 +86,11 @@ class OutreachReview:
         ):
             raise ValueError(f"Revised draft {revised.draft_id} does not replace {draft_id}.")
         entry = self._entries[draft_id]
-        entry.draft, entry.status, entry.error = revised, DraftStatus.PENDING, None
+        entry.draft, entry.status, entry.problems = revised, DraftStatus.PENDING, ()
 
-    def reject_edit(self, draft_id: str, error: str) -> None:
-        self._entries[draft_id].error = error
+    def reject_edit(self, draft_id: str, problems: Sequence[str]) -> None:
+        """Record why an edit was refused. The rejected text is never stored here."""
+        self._entries[draft_id].problems = tuple(problems)
 
     def approve(self, draft_id: str) -> None:
         entry = self._entries[draft_id]

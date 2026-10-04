@@ -19,7 +19,7 @@ from shift_assistant.reliability.grounding import GroundingAction, check_groundi
 from shift_assistant.reliability.reporting import rule_ranked
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.tools.evidence import EvidenceLedger
-from shift_assistant.tools.facts import DEFAULT_NOTE
+from shift_assistant.tools.notes import DEFAULT_NOTE
 from shift_assistant.tools.schemas import CandidateEvaluation, OutreachDraft
 from shift_assistant.tools.toolkit import StaffingToolkit
 

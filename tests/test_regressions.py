@@ -20,7 +20,7 @@ from shift_assistant.retrieval.embedder import HashingEmbedder
 from shift_assistant.review import OutreachReview
 from shift_assistant.tools.registry import ToolRegistry
 from shift_assistant.tools.schemas import EvaluateCandidatesArgs, FindOpenShiftsArgs
-from shift_assistant.tools.toolkit import StaffingToolkit
+from shift_assistant.tools.toolkit import NoteRejected, StaffingToolkit
 from tests.conftest import DATA_DIR, AssistantFactory, ai, make_settings, tool_call
 from tests.test_agent_workflow import SUBMIT, rec, research_steps, submission
 
@@ -207,9 +207,10 @@ def test_generated_and_edited_notes_reject_unsupported_claims(
         },
     )
     assert not result.ok and not result.evidence.drafts
-    assert "approved friendly sentences" in result.content
-    with pytest.raises(ValueError, match="approved friendly sentences"):
+    assert "personal_note was rejected" in result.content and 'Remove "' in result.content
+    with pytest.raises(NoteRejected) as rejected:
         assistant.revise_outreach("SHF-1001", "C-107", note)
+    assert [v.message for v in rejected.value.violations] == list(result.note_violations)
 
 
 def test_edited_export_matches_saved_text_and_approval(assistant: ShiftFillAssistant) -> None:

@@ -73,6 +73,43 @@ def test_ui_export_tracks_edits_and_approval(app: AppTest) -> None:
     assert app.text_area(key=key).value == note  # rejected text never reappears
 
 
+def test_note_editor_lists_problems_keeps_text_and_offers_suggestions(app: AppTest) -> None:
+    run_icu(app)
+    review = app.session_state["review"]
+    draft_id = app.session_state["report"].recommendations[0].outreach.draft_id
+    saved = review[draft_id].draft.personal_note
+    key = f"note-{review.run_id}-{draft_id}"
+    click(app, "Edit note")
+
+    rejected = "We would like to have you on this shift. It is $55/hour."
+    app.text_area(key=key).set_value(rejected)
+    click(app, "Save note")
+
+    assert review[draft_id].problems == ('Remove "$55/hour": pay can\'t appear in outreach.',)
+    assert any("Note not saved" in e.value and r"\$55/hour" in e.value for e in app.error)
+    assert app.text_area(key=key).value == rejected  # kept so the coordinator can fix it
+    exported = json.loads(app.json[0].value)
+    assert exported["recommendations"][0]["outreach"]["personal_note"] == saved
+    assert "$55" not in app.json[0].value  # rejected text is never saved or exported
+
+    app.text_area(key=key).set_value("We would like to have you on this shift.")
+    click(app, "Thank you for considering this opportunity.")  # one-click suggestion
+    own_words = (
+        "We would like to have you on this shift. Thank you for considering this opportunity."
+    )
+    assert app.text_area(key=key).value == own_words
+    click(app, "Save note")
+    assert review[draft_id].status is DraftStatus.PENDING
+    assert review[draft_id].draft.personal_note == own_words
+    assert own_words in app.code[0].value
+
+    click(app, "Edit note")
+    app.text_area(key=key).set_value("Maria Santos will join you.")
+    click(app, "Cancel")  # restores the saved note
+    assert review[draft_id].draft.personal_note == own_words
+    assert app.session_state[key] == own_words
+
+
 def test_shift_and_mode_changes_clear_results_and_approvals(app: AppTest) -> None:
     run_icu(app)
     click(app, "Approve message")

@@ -27,6 +27,7 @@ class AgentState(TypedDict):
     validation_errors: list[str]  # problems with the latest submission, if any
     submission: AgentSubmission | None
     completion: CompletionRecord | None  # work deterministic completion added to the answer
+    rejected_notes: Annotated[list[str], operator.add]  # drafts whose model note was rejected
     unresolved: list[str]  # mandatory work completion could not finish, and why
     failure: str | None  # set when the workflow must hand over to the fallback
     report: StaffingReport | None
@@ -46,6 +47,7 @@ def initial_state(
         validation_errors=[],
         submission=None,
         completion=None,
+        rejected_notes=[],
         unresolved=[],
         failure=None,
         report=None,

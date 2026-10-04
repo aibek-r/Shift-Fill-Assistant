@@ -24,7 +24,7 @@ from shift_assistant.tools.schemas import (
     SearchCliniciansArgs,
     SearchFacilityPoliciesArgs,
 )
-from shift_assistant.tools.toolkit import StaffingToolkit, ToolInputError, ToolOutput
+from shift_assistant.tools.toolkit import NoteRejected, StaffingToolkit, ToolInputError, ToolOutput
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +47,7 @@ class ToolExecution:
     content: str
     evidence: EvidenceLedger
     duration_ms: int
+    note_violations: tuple[str, ...] = ()  # set when draft_outreach rejected the personal note
 
 
 class ToolRegistry:
@@ -70,6 +71,11 @@ class ToolRegistry:
             output = spec.handler(spec.args_model.model_validate(arguments))
         except ValidationError as exc:
             return failure(f"Invalid arguments for {name}: {describe_validation_error(exc)}")
+        except NoteRejected as exc:
+            messages = tuple(v.message for v in exc.violations)
+            return ToolExecution(
+                name, False, f"ERROR: {exc}", EvidenceLedger(), _ms(started), messages
+            )
         except ToolInputError as exc:
             return failure(str(exc))
         except Exception as exc:  # exception text can contain secrets; log only its class
@@ -125,7 +131,8 @@ def build_tool_registry(toolkit: StaffingToolkit, output_char_limit: int) -> Too
             description=(
                 "Create an outreach draft for an eligible clinician; it is never sent "
                 "automatically. Shift logistics, reply deadline and credential reminders are "
-                "filled in from the system of record. You provide only a short personal note."
+                "filled in from the system of record. You provide only a short personal note in "
+                "your own words; a rejected note comes back with every problem listed."
             ),
             args_model=DraftOutreachArgs,
             handler=toolkit.draft_outreach,

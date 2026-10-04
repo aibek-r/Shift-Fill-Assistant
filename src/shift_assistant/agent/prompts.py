@@ -32,8 +32,9 @@ and the shift period (day or night).
 4. Vet EVERY candidate returned by search_clinicians with evaluate_candidates, in one call. Its \
 verdicts are final: never recommend a clinician it marks ineligible.
 5. Once the evaluate_candidates results are back, draft outreach with draft_outreach for each \
-clinician you recommend, unless the coordinator asked you not to. Its personal_note must select \
-the exact approved friendly sentences in the tool schema. Code adds recorded facts separately.
+clinician you recommend, unless the coordinator asked you not to. Write its personal_note in your \
+own words, following the rules in the tool schema. Code adds recorded facts separately. If a note \
+is rejected, fix every listed problem and try once more.
 6. Finish by calling submit_recommendation on its own.
 
 Rules

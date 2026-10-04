@@ -22,8 +22,10 @@ Click the **ICU night shift** example, then **Run assistant**.
   from profile free text.
 - **Excluded** lists six reason codes from the eligibility engine. **Alternates** shows the
   eligible clinician who was not shortlisted, computed by code.
-- Edit a note and show that editing withdraws an approval. Nothing is sent: delivery is
-  simulated.
+- Approve a draft, then edit its note: editing withdraws the approval. Type "It pays
+  $55/hour" and save: the editor lists `Remove "$55/hour": pay can't appear in outreach.` and
+  keeps your text. Add a suggested sentence with one click and save. Nothing is sent: delivery
+  is simulated.
 
 ## 2. An ambiguous request (30 seconds)
 

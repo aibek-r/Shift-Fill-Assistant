@@ -21,7 +21,7 @@ from shift_assistant.contracts import (
 from shift_assistant.reliability.grounding import check_grounding
 from shift_assistant.rendering import render_markdown
 from shift_assistant.retrieval.embedder import HashingEmbedder
-from shift_assistant.tools.facts import DEFAULT_NOTE
+from shift_assistant.tools.notes import DEFAULT_NOTE
 from shift_assistant.tools.schemas import EvaluateCandidatesArgs, FindOpenShiftsArgs
 from shift_assistant.tools.toolkit import StaffingToolkit
 from tests.conftest import AssistantFactory, ai, make_settings, tool_call

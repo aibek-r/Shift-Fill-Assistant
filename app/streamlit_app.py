@@ -35,9 +35,10 @@ from shift_assistant.repository import StaffingRepository
 from shift_assistant.retrieval.embedder import Embedder, create_embedder
 from shift_assistant.retrieval.knowledge import GLOBAL_SCOPE
 from shift_assistant.review import DraftStatus, OutreachReview
-from shift_assistant.tools.facts import FRIENDLY_NOTES
+from shift_assistant.tools.notes import FRIENDLY_NOTES, MAX_NOTE_CHARS
 from shift_assistant.tools.outreach import format_local_datetime, unit_label
 from shift_assistant.tools.schemas import PolicyExcerpt, ShiftSummary
+from shift_assistant.tools.toolkit import NoteRejected
 
 ASSETS = Path(__file__).parent / "assets"
 CONTENT_WIDTH = 1080
@@ -161,6 +162,12 @@ BLOCKER_LABELS = {
     CheckCode.LICENSE_NOT_VALID_IN_STATE: "{credential} not valid in this state",
 }
 
+NOTE_GUIDE = (
+    f"Write 1-4 sentences in your own words (at most {MAX_NOTE_CHARS} characters). Pay, numbers, "
+    "dates, contact details, other clinicians, qualifications, claims about the clinician, "
+    "logistics and promises are not allowed. Recorded facts, shift details and the reply "
+    "deadline are added automatically."
+)
 APPROVE_PROMPT = "Approve this message."
 APPROVED_MESSAGE = "Message approved successfully."
 DEMO_NOTE = "Demo mode: delivery is simulated."
@@ -685,17 +692,21 @@ def render_outreach(
         st.code(entry.draft.body, language=None, wrap_lines=True)
 
         if entry.status is DraftStatus.EDITING:
-            st.caption("Use 1-3 of these sentences. Recorded facts are added automatically:")
-            st.write(" ".join(FRIENDLY_NOTES))
-            st.text_area(
-                "Personal note",
-                key=f"note-{key}",
-                height=110,
-                help="Shift details, credential reminders and the reply deadline come from the "
-                "system of record and are added back when you save.",
-            )
-            if entry.error:
-                st.error(f"Note not saved: {entry.error}")
+            st.caption("Add a suggested sentence, or write your own:")
+            with st.container(horizontal=True, gap="small"):
+                for index, sentence in enumerate(FRIENDLY_NOTES):
+                    st.button(
+                        sentence,
+                        key=f"suggest-{index}-{key}",
+                        icon=":material/add:",
+                        on_click=add_suggestion,
+                        args=(review.run_id, draft_id, sentence),
+                    )
+            st.text_area("Personal note", key=f"note-{key}", height=110)
+            if entry.problems:  # the text stays in the box so the coordinator can fix it
+                listed = "\n".join(f"- {escape_markdown(p)}" for p in entry.problems)
+                st.error(f"**Note not saved.** Fix these, then save again:\n{listed}")
+            st.caption(NOTE_GUIDE)
             with st.container(horizontal=True):
                 st.button(
                     "Save note",
@@ -755,21 +766,41 @@ def start_edit(run_id: str, draft_id: str) -> None:
 
 
 def cancel_edit(run_id: str, draft_id: str) -> None:
+    """Discard the edit and put the saved note back in the editor."""
     if (review := current_review(run_id)) is not None:
         review.cancel_editing(draft_id)
+        st.session_state[f"note-{run_id}-{draft_id}"] = review[draft_id].draft.personal_note
+
+
+def add_suggestion(run_id: str, draft_id: str, sentence: str) -> None:
+    """Append an approved sentence to the note being edited; nothing is saved yet."""
+    if current_review(run_id) is None:
+        return
+    key = f"note-{run_id}-{draft_id}"
+    note = (st.session_state.get(key) or "").strip()
+    if sentence not in note:
+        st.session_state[key] = f"{note} {sentence}".strip()
 
 
 def save_note(run_id: str, draft_id: str, assistant: ShiftFillAssistant) -> None:
+    """Validate the note server-side; on rejection keep the typed text and list the problems."""
     if (review := current_review(run_id)) is None:
         return
     draft = review[draft_id].draft
     note = st.session_state[f"note-{run_id}-{draft_id}"]
     try:
         revised = assistant.revise_outreach(draft.shift_id, draft.clinician_id, note)
+    except NoteRejected as exc:
+        review.reject_edit(draft_id, [v.message for v in exc.violations])
     except ValueError as exc:
-        review.reject_edit(draft_id, str(exc))
+        review.reject_edit(draft_id, [str(exc)])
     else:
         review.save(draft_id, revised)
+
+
+def escape_markdown(text: str) -> str:
+    """Show user text literally: "$55/hour" must not start LaTeX, "*" must not start bold."""
+    return re.sub(r"([\\`*_\[\]<>#|$~])", r"\\\1", text)
 
 
 # --- Credential badges --------------------------------------------------------------------------

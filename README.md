@@ -127,7 +127,8 @@ trade-offs are in [docs/design.md](docs/design.md).
   and date from typed fields or conservative text parsing, and asks when several shifts or none
   match.
 - **Privacy and human review.** No contact details, license numbers or pay rates in drafts; each
-  draft names only its recipient; notes are limited to approved sentences; editing withdraws
+  draft names only its recipient; personal notes are free text but pass deterministic content
+  rules (a guardrail, not a guarantee: human approval stays the final check); editing withdraws
   approval; delivery is simulated, and nothing is ever reported as sent.
 - **Prompt-injection hygiene.** Tool data is treated as data. One mock profile contains an
   injection attempt; its clinician is ineligible, and a scripted model that obeys it is
@@ -155,7 +156,7 @@ harness cover them. [docs/DEMO.md](docs/DEMO.md) is a five-minute demo guide.
 ## Testing and evaluation
 
 ```bash
-pytest                                               # 230 offline tests
+pytest                                               # 276 offline tests
 python -m evals.run                                  # 10 cases x (scripted agent, fallback)
 ruff check src app scripts tests evals
 ruff format --check src app scripts tests evals

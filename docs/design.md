@@ -6,8 +6,8 @@ Contents: [boundaries](#what-code-decides-and-what-the-model-decides) ·
 [statuses](#report-status-and-completion-conditions) ·
 [completion and provenance](#deterministic-completion) ·
 [model budget](#model-execution-budget) · [fallback resolution](#fallback-shift-resolution) ·
-[preferences](#shift-preferences) · [evaluation](#offline-evaluation) ·
-[limitations](#known-limitations-and-unverified-behavior)
+[preferences](#shift-preferences) · [outreach notes](#outreach-notes) ·
+[evaluation](#offline-evaluation) · [limitations](#known-limitations-and-unverified-behavior)
 
 ## What code decides and what the model decides
 
@@ -25,9 +25,10 @@ everything a coordinator must be able to trust:
   policies, and a pinned shift cannot be swapped.
 - **Rendering.** Names, warnings, credential badges, explanations, citation text and outreach
   facts come from recorded evidence, not model prose. Model rationales and summaries are never
-  displayed. Outreach notes are limited to five approved friendly sentences. Pay rates, contact
-  details, license numbers and other clinicians' information are never added, and editing an
-  approved draft withdraws the approval.
+  displayed. The only free text in an outreach draft is a short personal note, filtered by
+  deterministic content rules ([below](#outreach-notes)). Pay rates, contact details, license
+  numbers and other clinicians' information are never added, and editing an approved draft
+  withdraws the approval.
 - **Status, counts and completion.** Code computes coverage counts, the summary and the status
   (below), and finishes mandatory work the model skipped.
 - **Delivery.** Nothing is sent. Approving a draft records the coordinator's decision; no
@@ -65,8 +66,8 @@ Completion reuses existing helpers rather than adding new logic:
 3. It keeps valid model picks in the model's order. If the shortlist is short, it appends
    eligible clinicians in the fallback's rule order (fewest credential warnings, then
    experience), never duplicates anyone, and stops at `min(requested, MAX_RECOMMENDATIONS)`.
-4. Only when outreach was requested, it drafts the standard template (approved friendly note
-   plus recorded facts) for each verified recommendation without a valid draft.
+4. Only when outreach was requested, it drafts the standard template (the default friendly
+   note plus recorded facts) for each verified recommendation without a valid draft.
 
 Everything it produces goes into the `EvidenceLedger` and the submission, so `check_grounding`
 and the verifier validate it exactly like model-produced evidence. If a required check or
@@ -198,6 +199,32 @@ keeps its existing conservative order: fewest credential warnings, then experien
 then openness, only **breaks ties** after both, so a self-reported preference never outranks
 credential risk or recorded experience. The rule-based fallback, and the rule-based additions
 from deterministic completion, therefore rank more by risk than by fit.
+
+## Outreach notes
+
+The model and coordinators write the personal note in their own words: 1-4 sentences, at most
+400 characters. Code adds everything factual around it (recorded experience, a matching shift
+preference, shift details, credential reminders and the reply deadline).
+`tools/notes.py::note_violations` blocks pay or money, numbers, dates and times, contact
+details, other clinicians' names, credentials and qualifications, claims about the clinician
+("you prefer nights"), logistics and promises. Each problem is reported with the exact text and
+a reason, for example `Remove "$55/hour": pay can't appear in outreach.`
+
+- **One check, server-side.** `StaffingToolkit.create_draft` runs it for the model's
+  `draft_outreach` calls and for coordinator edits (`revise_outreach`), so neither the model nor
+  the UI is trusted to have filtered the note.
+- **Model path.** A rejected note comes back as a tool error listing every violation, and the
+  model may fix it once. A second rejection for the same clinician drafts with the default note
+  instead. If the model never drafts, deterministic completion uses the default note. Rejected
+  model text is kept out of the exported trace.
+- **Coordinator path.** The editor offers the suggested sentences as one-click additions, lists
+  violations under the text box and keeps the typed text for fixing. Rejected text is never
+  saved or exported, Cancel restores the saved note, and editing withdraws approval.
+
+**This filter is a guardrail, not a guarantee.** Fixed patterns catch common unsafe content but
+can miss paraphrases ("ninety-ish an hour", an unlisted credential) and can occasionally block
+harmless wording ("first-rate"). A coordinator's approval of each draft stays the final check;
+nothing is sent automatically.
 
 ## Offline evaluation
 

@@ -9,6 +9,7 @@ from shift_assistant.contracts import StaffingRequest
 from shift_assistant.retrieval.embedder import HashingEmbedder
 from shift_assistant.review import DraftStatus, OutreachReview
 from shift_assistant.tools.schemas import OutreachDraft
+from shift_assistant.tools.toolkit import NoteRejected
 from tests.conftest import make_settings
 
 DANIEL_DRAFT = "DRAFT-SHF-1001-C-104"
@@ -41,16 +42,24 @@ def test_edited_note_keeps_verified_details_and_reminders(
 
 
 @pytest.mark.parametrize(
-    ("note", "reason"),
+    ("note", "problem"),
     [
-        ("Call me at 512-555-0199 to talk about this shift.", "contact details or pay rates"),
-        ("It pays $95 per hour, which is a great rate.", "contact details or pay rates"),
-        ("Too short.", "at least 20 characters"),
+        (
+            "Call me at 512-555-0199 to talk about this shift.",
+            'Remove "512-555-0199": contact details can\'t appear in outreach.',
+        ),
+        (
+            "It pays $95 per hour, which is a great rate.",
+            'Remove "$95 per hour": pay can\'t appear in outreach.',
+        ),
+        ("x" * 401, "Shorten the note to 400 characters or fewer (it has 401)."),
     ],
 )
-def test_edited_note_is_revalidated(assistant: ShiftFillAssistant, note: str, reason: str) -> None:
-    with pytest.raises(ValueError, match=reason):
+def test_edited_note_is_revalidated(assistant: ShiftFillAssistant, note: str, problem: str) -> None:
+    with pytest.raises(NoteRejected) as rejected:
         assistant.revise_outreach("SHF-1001", "C-104", note)
+
+    assert problem in [v.message for v in rejected.value.violations]
 
 
 def test_edit_is_refused_for_an_ineligible_clinician(assistant: ShiftFillAssistant) -> None:
@@ -79,14 +88,17 @@ def test_rejected_note_keeps_the_previous_draft(daniel_draft: OutreachDraft) -> 
     review = OutreachReview([daniel_draft])
     review.start_editing(DANIEL_DRAFT)
 
-    review.reject_edit(DANIEL_DRAFT, "personal_note: too short")
+    problems = ['Remove "$55/hour": pay can\'t appear in outreach.']
+    review.reject_edit(DANIEL_DRAFT, problems)
 
     entry = review[DANIEL_DRAFT]
-    assert (entry.status, entry.error, entry.draft) == (
+    assert (entry.status, entry.problems, entry.draft) == (
         DraftStatus.EDITING,
-        "personal_note: too short",
+        tuple(problems),
         daniel_draft,
     )
+    review.cancel_editing(DANIEL_DRAFT)
+    assert (entry.status, entry.problems, entry.draft) == (DraftStatus.PENDING, (), daniel_draft)
 
 
 def test_approvals_do_not_carry_over_to_a_new_run(assistant: ShiftFillAssistant) -> None:

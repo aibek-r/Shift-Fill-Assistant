@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -38,9 +38,11 @@ from shift_assistant.contracts import TraceEvent
 from shift_assistant.reliability.completion import DeterministicCompletion
 from shift_assistant.reliability.fallback import DeterministicFallback
 from shift_assistant.reliability.grounding import GroundingAction, check_grounding
-from shift_assistant.reliability.reporting import completion_summary
+from shift_assistant.reliability.reporting import completion_summary, plural
 from shift_assistant.reliability.verifier import build_agent_report
-from shift_assistant.tools.registry import ToolRegistry, describe_validation_error
+from shift_assistant.tools.notes import DEFAULT_NOTE
+from shift_assistant.tools.outreach import draft_id_for
+from shift_assistant.tools.registry import ToolExecution, ToolRegistry, describe_validation_error
 
 logger = logging.getLogger(__name__)
 
@@ -158,10 +160,12 @@ class _Nodes:
         messages: list[ToolMessage] = []
         trace: list[TraceEvent] = []
         step = len(state["trace"])
+        rejected_notes = list(state["rejected_notes"])
 
         for call in ai_message.tool_calls:
             step += 1
             started = time.perf_counter()
+            note_detail: str | None = None
             if call["name"] == SUBMIT_TOOL_NAME:
                 content = (
                     f"ERROR: {SUBMIT_TOOL_NAME} must be called on its own, after the other tool "
@@ -182,10 +186,18 @@ class _Nodes:
                 if call["name"] == "find_open_shifts" and state["request"].shift_id:
                     args["shift_id"] = state["request"].shift_id
                 execution = self._deps.tools.execute(call["name"], args)
+                if problems := len(execution.note_violations):
+                    execution = self._after_rejected_note(args, execution, rejected_notes)
+                    # Rejected note text is not kept in the exported trace, only the outcome.
+                    note_detail = (
+                        f"{_DEFAULT_NOTE_USED} The model's note was rejected twice."
+                        if execution.ok
+                        else f"Note rejected ({plural(problems, 'problem')}); sent back to fix."
+                    )
                 ledger = ledger.merge(execution.evidence)
                 content, ok = execution.content, execution.ok
             messages.append(_tool_message(call["id"], call["name"], content, ok))
-            detail = _compact(call["args"]) if ok else content
+            detail = note_detail or (_compact(call["args"]) if ok else content)
             trace.append(_event(step, "tool", call["name"], started, ok=ok, detail=detail))
 
         for bad in ai_message.invalid_tool_calls:
@@ -195,7 +207,41 @@ class _Nodes:
             messages.append(_tool_message(bad["id"], name, content, ok=False))
             trace.append(_event(step, "tool", name, time.perf_counter(), ok=False, detail=content))
 
-        return {"messages": messages, "ledger": ledger, "trace": trace}
+        new_rejections = rejected_notes[len(state["rejected_notes"]) :]
+        return {
+            "messages": messages,
+            "ledger": ledger,
+            "trace": trace,
+            "rejected_notes": new_rejections,
+        }
+
+    def _after_rejected_note(
+        self, args: dict[str, Any], execution: ToolExecution, rejected_notes: list[str]
+    ) -> ToolExecution:
+        """The model may fix a rejected note once; a second rejection uses the default note.
+
+        The default note passes the same content rules, and the draft still goes through the
+        tool's eligibility check, so nothing is bypassed.
+        """
+        draft_id = draft_id_for(str(args.get("shift_id")), str(args.get("clinician_id")))
+        if draft_id not in rejected_notes:
+            rejected_notes.append(draft_id)
+            return replace(
+                execution,
+                content=f"{execution.content}\nIf the next note for this clinician is also "
+                "rejected, the default note is used instead.",
+            )
+        fallback = self._deps.tools.execute(
+            "draft_outreach", {**args, "personal_note": DEFAULT_NOTE}
+        )
+        if not fallback.ok:
+            return execution
+        violations = "\n".join(f"- {message}" for message in execution.note_violations)
+        return replace(
+            fallback,
+            content=f"{_DEFAULT_NOTE_USED} The note was rejected again:\n{violations}\n"
+            f"Draft created with the default note: {fallback.content}",
+        )
 
     def validate(self, state: AgentState) -> Update:
         started = time.perf_counter()
@@ -335,6 +381,9 @@ class _Nodes:
 
 
 # --- Helpers ---------------------------------------------------------------------------------
+
+
+_DEFAULT_NOTE_USED = "Default note used."
 
 
 def _last_ai_message(state: AgentState) -> AIMessage:

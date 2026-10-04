@@ -20,8 +20,10 @@ def test_preferences_come_from_structured_fields_only() -> None:
     assert "A preference for the other period does not support a match" in system
     assert "make no claim about it" in system  # nothing recorded: omit the claim
     assert "they never make anyone eligible or ineligible" in system
-    assert "exact friendly sentences" in note
+    assert "in your own words" in note
+    assert "claims about the clinician" in note
     assert "a matching recorded shift preference" in note
+    assert "Write its personal_note in your own words" in system
 
 
 def test_clarifications_must_state_dates_accurately() -> None:
