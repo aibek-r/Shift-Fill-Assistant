@@ -91,9 +91,10 @@ plans the workflow and ranks eligible clinicians**.
 - **Deterministic compliance.** `EligibilityEngine` makes every eligibility verdict. The model
   cannot overrule it. `draft_outreach` refuses ineligible clinicians, and the verifier drops any
   ineligible clinician who reaches the answer.
-- **Facts from the record.** Explanations and outreach show recorded experience, exact recognized
-  profile preference clauses, shift times and credential warnings. Preferences are labelled as
-  self-reported. Unknown or conditional preference wording is omitted rather than paraphrased.
+- **Facts from the record.** Explanations and outreach show recorded experience, a matching
+  structured shift preference (or explicit openness to the offered period), shift times and
+  credential warnings. Preferences are labelled as self-reported, never quoted from profile free
+  text, and never affect eligibility.
   The model and coordinator select 1-3 approved friendly sentences for the personal note; the
   editor displays the options. Arbitrary factual edits are rejected, including pay written in
   words, arrival instructions, other clinicians and invented qualifications. This deliberately
@@ -198,7 +199,7 @@ judgement.
   shortlists larger than the eligible pool, size limits, cross-shift tool calls and submissions,
   unsupported factual model text, negated/conditional preferences, missing policy files and
   unsupported generated or edited notes.
-- **Prompts.** The model is told to keep stated preferences and willingness distinct.
+- **Preferences.** Structured fields only; a conflicting preference is never presented as support.
 
 Ranking quality and the rate of grounding problems still need live evaluation. The example
 reports were regenerated after these fixes using the paid model and real local embeddings;

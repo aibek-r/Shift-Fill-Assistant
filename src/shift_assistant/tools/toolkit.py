@@ -16,7 +16,7 @@ from shift_assistant.domain.models import Clinician, Facility, Shift
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.retrieval.knowledge import ClinicianProfileIndex, PolicyKnowledgeBase
 from shift_assistant.tools.evidence import EvidenceLedger
-from shift_assistant.tools.facts import preference_quotes, validate_personal_note
+from shift_assistant.tools.facts import period_fit, validate_personal_note
 from shift_assistant.tools.outreach import render_outreach
 from shift_assistant.tools.schemas import (
     CandidateEvaluation,
@@ -179,7 +179,9 @@ class StaffingToolkit:
             warnings=result.warnings,
             credentials=result.credentials,
             years_experience=clinician.years_experience,
-            preference_quotes=preference_quotes(clinician.profile),
+            period_fit=period_fit(
+                clinician.shift_preference, clinician.open_to, self.summarize(shift).period
+            ),
         )
 
     def create_draft(
@@ -232,5 +234,7 @@ def _profile(clinician: Clinician, relevance: float | None) -> ClinicianProfile:
         years_experience=clinician.years_experience,
         home_city=clinician.home_city,
         profile=clinician.profile,
+        shift_preference=clinician.shift_preference,
+        open_to=clinician.open_to,
         relevance=relevance,
     )

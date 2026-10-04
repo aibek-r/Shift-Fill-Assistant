@@ -16,7 +16,6 @@ from shift_assistant.reliability.grounding import check_grounding
 from shift_assistant.reliability.verifier import build_agent_report
 from shift_assistant.retrieval.embedder import HashingEmbedder
 from shift_assistant.review import OutreachReview
-from shift_assistant.tools.facts import preference_quotes
 from shift_assistant.tools.registry import ToolRegistry
 from shift_assistant.tools.schemas import EvaluateCandidatesArgs, FindOpenShiftsArgs
 from shift_assistant.tools.toolkit import StaffingToolkit
@@ -174,23 +173,11 @@ def test_unverified_model_claims_are_not_displayed(scripted_assistant: Assistant
     report = assistant.run(StaffingRequest(text="Find two ICU nurses without outreach"))
     assert report.mode is RunMode.AGENT
     grace = report.recommendations[1]
-    assert "Prefers day shifts but is open to occasional nights" in grace.rationale
+    assert "Self-reported: is open to night shifts." in grace.rationale  # structured, not quoted
+    assert "prefers day" not in grace.rationale  # a conflicting preference is not support
     assert "5 years" in grace.rationale
     assert "ECMO" not in report.model_dump_json() and "99 years" not in report.model_dump_json()
     assert report.agent_notes is None
-
-
-@pytest.mark.parametrize(
-    "profile",
-    [
-        "Does not prefer night shifts.",
-        "Not available for nights.",
-        "Prefers night shifts only if Monday.",
-        "Available for nights unless caring for family.",
-    ],
-)
-def test_unknown_or_negated_preferences_are_not_rewritten(profile: str) -> None:
-    assert preference_quotes(profile) == []
 
 
 @pytest.mark.parametrize(

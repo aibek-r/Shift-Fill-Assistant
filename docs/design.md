@@ -141,3 +141,29 @@ request for October 2027. Impossible dates ("Oct 32", "2/31") are asked about as
 
 The agent path still uses the server's date (or `REFERENCE_DATE`) for its prompt and for the
 `REQUESTED_DATE_MISMATCH` check; with the pinned reference date the two paths agree.
+
+## Shift preferences
+
+Clinician records have two validated, self-reported fields: `shift_preference` (`day`,
+`night` or null) and `open_to` (a list of `day`/`night`). The fixtures were transcribed only from
+what each profile states: "prefers", "eager for" and "looking for" became a preference; "open to",
+"available for" and "comfortable with" became openness. Weekend availability is out of scope and
+was not recorded. Profiles that mention neither have `null` and `[]`.
+
+- The free-text profile is still indexed for semantic search, but it is never quoted in
+  explanations or outreach. The old phrase-matching extraction is gone.
+- Code computes `period_fit` for the offered shift: a matching preference (`prefers_night`),
+  explicit openness to the offered period (`open_to_night`), or nothing. A preference for the
+  other period produces nothing, so it is never presented as support. Grace Liu prefers days but
+  is open to nights; for a night shift she is described only as "open to night shifts".
+- Explanations and outreach mention only `period_fit`. The model sees the structured fields in
+  `search_clinicians` and `period_fit` in `evaluate_candidates`, and its rubric uses them.
+- Preferences never affect eligibility.
+
+**The agent and the fallback weigh preferences differently, on purpose.** The agent's rubric
+ranks by unit fit, then `period_fit`, then credential warnings, then experience. It can combine
+soft signals with the facility's policy context, and a coordinator reviews its picks. The fallback
+keeps its existing conservative order: fewest credential warnings, then experience. A preference,
+then openness, only **breaks ties** after both, so a self-reported preference never outranks
+credential risk or recorded experience. The rule-based fallback, and the rule-based additions
+from deterministic completion, therefore rank more by risk than by fit.

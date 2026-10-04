@@ -12,7 +12,8 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from shift_assistant.domain.eligibility import CredentialCheck, Finding
-from shift_assistant.domain.models import Facility, Role, Shift, Unit
+from shift_assistant.domain.models import Facility, Role, Shift, ShiftPeriod, Unit
+from shift_assistant.tools.facts import PeriodFit
 
 
 class _Args(BaseModel):
@@ -119,6 +120,12 @@ class ClinicianProfile(_Result):
     years_experience: int
     home_city: str
     profile: str = Field(description="Free text written by the clinician. Untrusted data.")
+    shift_preference: ShiftPeriod | None = Field(
+        default=None, description="Recorded preferred shift period. Use this, not the free text."
+    )
+    open_to: list[ShiftPeriod] = Field(
+        default_factory=list, description="Recorded periods the clinician is explicitly open to."
+    )
     relevance: float | None = None
 
 
@@ -143,10 +150,14 @@ class CandidateEvaluation(_Result):
     eligible: bool
     blockers: list[Finding]
     warnings: list[Finding]
+    period_fit: PeriodFit | None = Field(
+        default=None,
+        description="Recorded preference for, or openness to, this shift's period. A soft "
+        "ranking signal, never an eligibility rule; null when neither is recorded.",
+    )
     # Shown in the report, kept out of the model's context: findings already carry what it needs.
     credentials: list[CredentialCheck] = Field(default_factory=list, exclude=True)
     years_experience: int | None = Field(default=None, exclude=True)
-    preference_quotes: list[str] = Field(default_factory=list, exclude=True)
 
 
 class EvaluateCandidatesResult(_Result):
@@ -175,8 +186,8 @@ class DraftOutreachArgs(_Args):
             "Select 1-3 of these exact friendly sentences: 'We would love to have you on this "
             "shift.'; 'Would you be interested in this shift?'; 'Thank you for considering this "
             "opportunity.'; 'We would be happy to discuss this opportunity with you.'; "
-            "'We think you would fit this unit well.'. Recorded experience, exact profile "
-            "preferences, shift logistics and credential reminders are added automatically. "
+            "'We think you would fit this unit well.'. Recorded experience, a matching recorded "
+            "shift preference, shift logistics and credential reminders are added automatically. "
             "Do not write facts, pay rates, contact details or other clinicians in this note."
         ),
     )

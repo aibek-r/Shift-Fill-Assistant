@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 from shift_assistant.domain.eligibility import CheckCode, Finding
 from shift_assistant.domain.models import Clinician, Unit
-from shift_assistant.tools.facts import preference_quotes
+from shift_assistant.tools.facts import period_fit, period_fit_phrase
 from shift_assistant.tools.schemas import OutreachDraft, ShiftSummary
 
 RESPONSE_WINDOW_BEFORE_SHIFT = timedelta(hours=48)
@@ -30,20 +30,14 @@ def render_outreach(
         f"Open {unit} {shift.period} shift at {shift.facility_name} on {_short_date(shift.start)}"
     )
     starts, ends = format_local_datetime(shift.start), format_local_datetime(shift.end)
+    # Structured fields only: profile free text is never quoted to the clinician.
+    fit = period_fit(clinician.shift_preference, clinician.open_to, shift.period)
     lines = [
         f"Hi {clinician.first_name},",
         "",
         personal_note.strip(),
         f"Your recorded experience: {clinician.years_experience} years.",
-        *(
-            [
-                "Your profile states: "
-                + "; ".join(f"“{q}”" for q in preference_quotes(clinician.profile))
-                + "."
-            ]
-            if preference_quotes(clinician.profile)
-            else []
-        ),
+        *([f"Your profile says you {_second_person(period_fit_phrase(fit))}."] if fit else []),
         "",
         "Shift details",
         f"- Facility: {shift.facility_name} ({shift.location})",
@@ -73,6 +67,10 @@ def render_outreach(
         subject=subject,
         body="\n".join(lines),
     )
+
+
+def _second_person(phrase: str) -> str:
+    return phrase.replace("prefers", "prefer").replace("is open", "are open")
 
 
 def unit_label(unit: Unit) -> str:

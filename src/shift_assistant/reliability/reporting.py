@@ -58,14 +58,22 @@ def missing_outreach(
     return sum(r.outreach is None for r in recommendations)
 
 
+_FIT_ORDER = {"prefers_day": 0, "prefers_night": 0, "open_to_day": 1, "open_to_night": 1}
+
+
 def rule_ranked(evaluations: Iterable[CandidateEvaluation]) -> list[CandidateEvaluation]:
     """Eligible clinicians in the fallback's order: fewest credential warnings, then experience.
 
-    The sort is stable, so ties keep the caller's (candidate pool) order.
+    A recorded preference for the shift's period, then openness to it, only breaks ties left by
+    those two. The sort is stable, so remaining ties keep the caller's (candidate pool) order.
     """
     return sorted(
         (e for e in evaluations if e.eligible),
-        key=lambda e: (len(e.warnings), -(e.years_experience or 0)),
+        key=lambda e: (
+            len(e.warnings),
+            -(e.years_experience or 0),
+            _FIT_ORDER.get(e.period_fit or "", 2),
+        ),
     )
 
 

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 from datetime import date
 from enum import StrEnum
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 COMPACT_JURISDICTION = "COMPACT"
 """Jurisdiction value for a multistate (Nurse Licensure Compact) RN license."""
+
+ShiftPeriod = Literal["day", "night"]
 
 
 class Role(StrEnum):
@@ -65,7 +67,18 @@ class Clinician(_Entity):
     email: str
     phone: str
     credentials: list[Credential]
-    profile: str
+    profile: str = Field(description="Free text for semantic search. Untrusted; never quoted.")
+    # Self-reported soft signals transcribed from the profile. They never affect eligibility.
+    shift_preference: ShiftPeriod | None = None
+    open_to: list[ShiftPeriod] = Field(
+        default=[], description="Periods the clinician is explicitly open to besides a preference."
+    )
+
+    @model_validator(mode="after")
+    def _distinct_periods(self) -> Self:
+        if len(set(self.open_to)) != len(self.open_to) or self.shift_preference in self.open_to:
+            raise ValueError("open_to must list distinct periods other than shift_preference")
+        return self
 
     @property
     def first_name(self) -> str:
