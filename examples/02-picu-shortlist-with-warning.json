@@ -6,7 +6,7 @@
   "status": "ready",
   "mode": "agent",
   "summary": "3 candidates evaluated, covering the shift's full candidate pool: 2 eligible, 1 excluded. 2 eligible clinicians shortlisted for 1 open position.",
-  "agent_notes": "I ranked Isabella Garcia first because her PICU/NICU background and pediatric ventilator management most closely match the unit's stated PICU preferences, and she has no credential warnings. Liam Chen follows because he is a fit for the PICU night shift and is available for nights, but his PALS is expiring soon, which lowers him behind Isabella. Emma Davis was not shortlisted because her RN license is not valid in California.",
+  "agent_notes": "Bayview Children's Hospital has one open PICU night shift on Oct 18, 2026, from 7:00 PM to 7:00 AM in America/Los_Angeles. Isabella Garcia ranks first because her pediatric ventilator management experience directly matches the PICU unit's strong preference, while Liam Chen ranks second because he meets the PICU experience requirement and is available for nights but has a soon-to-expire PALS warning. Emma Davis ranks lower because her RN license is not valid in California, so she is not eligible.",
   "shift": {
     "shift_id": "SHF-3001",
     "facility_id": "FAC-003",
@@ -25,7 +25,7 @@
       "rank": 1,
       "clinician_id": "C-116",
       "clinician_name": "Isabella Garcia",
-      "rationale": "Isabella Garcia is the strongest match for Bayview Children's Hospital PICU because she has 6 years across PICU and NICU, and her profile specifically includes pediatric ventilator management. She has no credential warnings on the shift and meets the unit's PICU experience and pediatric critical care fit well.",
+      "rationale": "Strongest match for the PICU unit because Isabella Garcia has 6 years across PICU and NICU and pediatric ventilator management experience, which aligns with the unit's strongly preferred ventilator background. She is eligible with no warnings and fits the night shift context.",
       "warnings": [],
       "credentials": [
         {
@@ -53,30 +53,30 @@
           "facility_id": "FAC-003",
           "section": "PICU unit profile",
           "text": "PICU unit profile\nThe 28-bed PICU cares for medical, surgical and cardiac pediatric patients. Agency nurses need a California RN license, BLS and PALS, with at least 2 years of pediatric critical care experience. Pediatric ventilator management experience is strongly preferred.",
-          "score": 0.6642
+          "score": 0.6478
         },
         {
           "chunk_id": "GLOBAL#candidate-prioritization",
           "facility_id": "GLOBAL",
           "section": "Candidate prioritization",
           "text": "Candidate prioritization\nWhen several clinicians are eligible, prefer candidates whose experience matches the unit's stated preferences, who have expressed a preference for the shift type (day or night), and whose credentials are not about to expire. Recommend more candidates than open positions only when coordinators asked for a shortlist.",
-          "score": 0.6856
+          "score": 0.6768
         }
       ],
       "outreach": {
         "draft_id": "DRAFT-SHF-3001-C-116",
         "shift_id": "SHF-3001",
         "clinician_id": "C-116",
-        "personal_note": "You look like a strong fit for Bayview Children's Hospital PICU night shift on Oct 18 because of your 6 years across PICU and NICU and your experience with pediatric ventilator management. Your background in pediatric critical care aligns well with the unit's PICU needs.",
+        "personal_note": "You look like a strong fit for Bayview Children's Hospital's PICU night shift because you have 6 years across PICU and NICU and experience with pediatric ventilator management. Your background aligns well with the unit's pediatric critical care needs.",
         "subject": "Open PICU night shift at Bayview Children's Hospital on Sun, Oct 18",
-        "body": "Hi Isabella,\n\nYou look like a strong fit for Bayview Children's Hospital PICU night shift on Oct 18 because of your 6 years across PICU and NICU and your experience with pediatric ventilator management. Your background in pediatric critical care aligns well with the unit's PICU needs.\n\nShift details\n- Facility: Bayview Children's Hospital (San Diego, CA)\n- Unit: PICU\n- Time: Sun, Oct 18, 2026, 7:00 PM to Mon, Oct 19, 2026, 7:00 AM (America/Los_Angeles)\n\nPlease reply by Fri, Oct 16, 2026, 7:00 PM (America/Los_Angeles) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
+        "body": "Hi Isabella,\n\nYou look like a strong fit for Bayview Children's Hospital's PICU night shift because you have 6 years across PICU and NICU and experience with pediatric ventilator management. Your background aligns well with the unit's pediatric critical care needs.\n\nShift details\n- Facility: Bayview Children's Hospital (San Diego, CA)\n- Unit: PICU\n- Time: Sun, Oct 18, 2026, 7:00 PM to Mon, Oct 19, 2026, 7:00 AM (America/Los_Angeles)\n\nPlease reply by Fri, Oct 16, 2026, 7:00 PM (America/Los_Angeles) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
       }
     },
     {
       "rank": 2,
       "clinician_id": "C-117",
       "clinician_name": "Liam Chen",
-      "rationale": "Liam Chen fits the PICU night shift with 2 years of PICU experience and availability for nights, plus comfort with post-operative pediatric patients. He is eligible, but he has a credential warning because PALS expires 22 days after the shift, so he ranks behind Isabella.",
+      "rationale": "Liam Chen meets the PICU experience floor with 2 years in PICU and is available for nights, which supports the shift period. He is eligible, but his PALS is expiring soon, so he ranks behind the cleaner credential profile.",
       "warnings": [
         {
           "code": "CREDENTIAL_EXPIRING_SOON",
@@ -110,23 +110,23 @@
           "facility_id": "FAC-003",
           "section": "PICU unit profile",
           "text": "PICU unit profile\nThe 28-bed PICU cares for medical, surgical and cardiac pediatric patients. Agency nurses need a California RN license, BLS and PALS, with at least 2 years of pediatric critical care experience. Pediatric ventilator management experience is strongly preferred.",
-          "score": 0.6642
+          "score": 0.6478
         },
         {
           "chunk_id": "GLOBAL#candidate-prioritization",
           "facility_id": "GLOBAL",
           "section": "Candidate prioritization",
           "text": "Candidate prioritization\nWhen several clinicians are eligible, prefer candidates whose experience matches the unit's stated preferences, who have expressed a preference for the shift type (day or night), and whose credentials are not about to expire. Recommend more candidates than open positions only when coordinators asked for a shortlist.",
-          "score": 0.6856
+          "score": 0.6768
         }
       ],
       "outreach": {
         "draft_id": "DRAFT-SHF-3001-C-117",
         "shift_id": "SHF-3001",
         "clinician_id": "C-117",
-        "personal_note": "You look like a good fit for Bayview Children's Hospital PICU night shift on Oct 18 because you have 2 years of PICU experience and are available for nights. Your comfort with post-operative pediatric patients also matches the PICU setting.",
+        "personal_note": "You look like a solid fit for Bayview Children's Hospital's PICU night shift because you have 2 years of PICU experience and you are available for nights. That matches the unit's pediatric critical care needs.",
         "subject": "Open PICU night shift at Bayview Children's Hospital on Sun, Oct 18",
-        "body": "Hi Liam,\n\nYou look like a good fit for Bayview Children's Hospital PICU night shift on Oct 18 because you have 2 years of PICU experience and are available for nights. Your comfort with post-operative pediatric patients also matches the PICU setting.\n\nShift details\n- Facility: Bayview Children's Hospital (San Diego, CA)\n- Unit: PICU\n- Time: Sun, Oct 18, 2026, 7:00 PM to Mon, Oct 19, 2026, 7:00 AM (America/Los_Angeles)\n\nCredential reminder\n- Your PALS expires soon. Please upload your renewal so you stay eligible.\n\nPlease reply by Fri, Oct 16, 2026, 7:00 PM (America/Los_Angeles) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
+        "body": "Hi Liam,\n\nYou look like a solid fit for Bayview Children's Hospital's PICU night shift because you have 2 years of PICU experience and you are available for nights. That matches the unit's pediatric critical care needs.\n\nShift details\n- Facility: Bayview Children's Hospital (San Diego, CA)\n- Unit: PICU\n- Time: Sun, Oct 18, 2026, 7:00 PM to Mon, Oct 19, 2026, 7:00 AM (America/Los_Angeles)\n\nCredential reminder\n- Your PALS expires soon. Please upload your renewal so you stay eligible.\n\nPlease reply by Fri, Oct 16, 2026, 7:00 PM (America/Los_Angeles) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
       }
     }
   ],
@@ -183,8 +183,8 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: find_open_shifts",
-      "duration_ms": 1132,
-      "input_tokens": 1482,
+      "duration_ms": 843,
+      "input_tokens": 1555,
       "output_tokens": 51
     },
     {
@@ -203,17 +203,17 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: search_facility_policies, search_clinicians",
-      "duration_ms": 2150,
-      "input_tokens": 1647,
-      "output_tokens": 216
+      "duration_ms": 1087,
+      "input_tokens": 1720,
+      "output_tokens": 115
     },
     {
       "step": 4,
       "kind": "tool",
       "name": "search_facility_policies",
       "ok": true,
-      "detail": "{\"facility_id\": \"FAC-003\", \"query\": \"PICU unit preferences and night shift arrival/outreach rules\", \"top_k\": 4}",
-      "duration_ms": 23,
+      "detail": "{\"facility_id\": \"FAC-003\", \"query\": \"PICU unit preferences and night shift arrival logistics or outreach rules\", \"top_k\": 5}",
+      "duration_ms": 19,
       "input_tokens": null,
       "output_tokens": null
     },
@@ -222,8 +222,8 @@
       "kind": "tool",
       "name": "search_clinicians",
       "ok": true,
-      "detail": "{\"shift_id\": \"SHF-3001\", \"query\": \"PICU night, pediatric critical care, Bayview preferences\", \"limit\": 10}",
-      "duration_ms": 20,
+      "detail": "{\"shift_id\": \"SHF-3001\", \"query\": \"PICU night shift, pediatric critical care, night availability, preferences\", \"limit\": 10}",
+      "duration_ms": 24,
       "input_tokens": null,
       "output_tokens": null
     },
@@ -233,9 +233,9 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: evaluate_candidates",
-      "duration_ms": 947,
-      "input_tokens": 2467,
-      "output_tokens": 52
+      "duration_ms": 838,
+      "input_tokens": 2501,
+      "output_tokens": 51
     },
     {
       "step": 7,
@@ -253,17 +253,17 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: draft_outreach, draft_outreach",
-      "duration_ms": 1774,
-      "input_tokens": 2732,
-      "output_tokens": 229
+      "duration_ms": 1481,
+      "input_tokens": 2765,
+      "output_tokens": 210
     },
     {
       "step": 9,
       "kind": "tool",
       "name": "draft_outreach",
       "ok": true,
-      "detail": "{\"shift_id\": \"SHF-3001\", \"clinician_id\": \"C-116\", \"personal_note\": \"You look like a strong fit for Bayview Children's Hospital PICU night shift on Oct 18 because of your 6 years across PICU and NICU a...",
-      "duration_ms": 0,
+      "detail": "{\"shift_id\": \"SHF-3001\", \"clinician_id\": \"C-116\", \"personal_note\": \"You look like a strong fit for Bayview Children's Hospital's PICU night shift because you have 6 years across PICU and NICU and expe...",
+      "duration_ms": 1,
       "input_tokens": null,
       "output_tokens": null
     },
@@ -272,8 +272,8 @@
       "kind": "tool",
       "name": "draft_outreach",
       "ok": true,
-      "detail": "{\"shift_id\": \"SHF-3001\", \"clinician_id\": \"C-117\", \"personal_note\": \"You look like a good fit for Bayview Children's Hospital PICU night shift on Oct 18 because you have 2 years of PICU experience and ...",
-      "duration_ms": 0,
+      "detail": "{\"shift_id\": \"SHF-3001\", \"clinician_id\": \"C-117\", \"personal_note\": \"You look like a solid fit for Bayview Children's Hospital's PICU night shift because you have 2 years of PICU experience and you are...",
+      "duration_ms": 1,
       "input_tokens": null,
       "output_tokens": null
     },
@@ -283,9 +283,9 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: submit_recommendation",
-      "duration_ms": 3129,
-      "input_tokens": 3556,
-      "output_tokens": 443
+      "duration_ms": 3199,
+      "input_tokens": 3544,
+      "output_tokens": 357
     },
     {
       "step": 12,
@@ -311,8 +311,8 @@
   "metrics": {
     "llm_calls": 5,
     "tool_calls": 6,
-    "input_tokens": 11884,
-    "output_tokens": 991,
-    "duration_ms": 9195
+    "input_tokens": 12085,
+    "output_tokens": 784,
+    "duration_ms": 7519
   }
 }

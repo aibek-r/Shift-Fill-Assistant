@@ -3,15 +3,25 @@
 The same check runs twice. During validation its messages go back to the model so it can repair
 the answer. During verification its actions are enforced, so ungrounded content never reaches a
 coordinator even if the model ran out of repair attempts.
+
+It verifies references (shift, clinicians, citations, drafts), eligibility and vetting coverage.
+Free-text explanations are not fact-checked; the one text check is that every credential warning
+is mentioned in the rationale.
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from enum import StrEnum
 
-from shift_assistant.agent.submission import AgentSubmission, SubmissionStatus
+from shift_assistant.agent.submission import AgentSubmission, RecommendedCandidate, SubmissionStatus
+from shift_assistant.domain.models import CredentialType
+from shift_assistant.retrieval.knowledge import GLOBAL_SCOPE
 from shift_assistant.tools.evidence import EvidenceLedger
+from shift_assistant.tools.schemas import CandidateEvaluation
+
+_NO_WARNINGS_CLAIM = re.compile(r"\bno (?:credential )?warnings?\b", re.IGNORECASE)
 
 
 class GroundingAction(StrEnum):
@@ -47,18 +57,31 @@ def check_grounding(
         ]
 
     problems: list[GroundingProblem] = []
-    if unvetted := ledger.unvetted_candidates(shift_id):
+    if shift_id not in ledger.candidate_pools:
+        problems.append(
+            GroundingProblem(
+                code="POOL_NOT_SEARCHED",
+                message=(
+                    f"search_clinicians was never called for {shift_id}, so its candidate pool "
+                    "is unknown and better or eligible candidates may be missed. Search the pool, "
+                    "vet every candidate with evaluate_candidates, then submit again."
+                ),
+                action=GroundingAction.FLAG,
+            )
+        )
+    elif unvetted := ledger.unvetted_candidates(shift_id):
         problems.append(
             GroundingProblem(
                 code="INCOMPLETE_VETTING",
                 message=(
-                    f"search_clinicians returned {', '.join(unvetted)} for {shift_id}, but they "
+                    f"The candidate pool for {shift_id} includes {', '.join(unvetted)}, but they "
                     "were never vetted, so the shortlist may miss better candidates. Vet them "
                     "with evaluate_candidates, then submit again."
                 ),
                 action=GroundingAction.FLAG,
             )
         )
+    facility_scopes = {ledger.shifts[shift_id].facility_id, GLOBAL_SCOPE}
     seen: set[str] = set()
     for index, rec in enumerate(submission.recommendations):
         cid = rec.clinician_id
@@ -87,17 +110,28 @@ def check_grounding(
             problems.append(_drop(index, "INELIGIBLE", f"{cid} is not eligible: {reasons}"))
             continue
 
-        problems.extend(
-            GroundingProblem(
-                code="UNKNOWN_CITATION",
-                message=f"Citation '{chunk_id}' was not returned by search_facility_policies.",
-                action=GroundingAction.DROP_CITATION,
-                index=index,
-                citation_id=chunk_id,
-            )
-            for chunk_id in rec.citation_ids
-            if chunk_id not in ledger.policy_excerpts
-        )
+        for chunk_id in rec.citation_ids:
+            excerpt = ledger.policy_excerpts.get(chunk_id)
+            if excerpt is None:
+                problems.append(
+                    _drop_citation(
+                        index,
+                        chunk_id,
+                        "UNKNOWN_CITATION",
+                        f"Citation '{chunk_id}' was not returned by search_facility_policies.",
+                    )
+                )
+            elif excerpt.facility_id not in facility_scopes:
+                problems.append(
+                    _drop_citation(
+                        index,
+                        chunk_id,
+                        "OTHER_FACILITY_CITATION",
+                        f"Citation '{chunk_id}' is another facility's policy and cannot support "
+                        f"a recommendation for {shift_id}.",
+                    )
+                )
+        problems.extend(_warning_mismatches(index, rec, evaluation))
         if rec.draft_id is not None:
             draft = ledger.drafts.get(rec.draft_id)
             if draft is None or draft.clinician_id != cid or draft.shift_id != shift_id:
@@ -112,5 +146,41 @@ def check_grounding(
     return problems
 
 
+def _warning_mismatches(
+    index: int, rec: RecommendedCandidate, evaluation: CandidateEvaluation
+) -> list[GroundingProblem]:
+    """The rationale must mention each credential warning and must not deny having any."""
+    if not evaluation.warnings:
+        return []
+    rationale = rec.rationale.lower()
+    missing = [
+        w.credential
+        for w in evaluation.warnings
+        if w.credential is not None and _credential_word(w.credential) not in rationale
+    ]
+    if not missing and not _NO_WARNINGS_CLAIM.search(rec.rationale):
+        return []
+    details = "; ".join(w.message for w in evaluation.warnings)
+    return [
+        GroundingProblem(
+            code="RATIONALE_WARNING_MISMATCH",
+            message=(
+                f"The rationale for {rec.clinician_id} must mention its credential warning "
+                f"and must not say there are none: {details}"
+            ),
+            action=GroundingAction.FLAG,
+            index=index,
+        )
+    ]
+
+
+def _credential_word(credential: CredentialType) -> str:
+    return "license" if credential is CredentialType.RN_LICENSE else credential.value.lower()
+
+
 def _drop(index: int, code: str, message: str) -> GroundingProblem:
     return GroundingProblem(code, message, GroundingAction.DROP_RECOMMENDATION, index)
+
+
+def _drop_citation(index: int, chunk_id: str, code: str, message: str) -> GroundingProblem:
+    return GroundingProblem(code, message, GroundingAction.DROP_CITATION, index, chunk_id)

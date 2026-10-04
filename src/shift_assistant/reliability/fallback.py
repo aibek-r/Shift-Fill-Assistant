@@ -109,9 +109,17 @@ class DeterministicFallback:
         )
 
     def _resolve_shift(self, request: StaffingRequest, ledger: EvidenceLedger) -> Shift | None:
-        """Use the pinned shift, else the agent's lookup if it found exactly one shift."""
+        """Use the selected shift, else the one the agent worked on, else the one it found.
+
+        "Worked on" means it searched or vetted candidates for a shift that find_open_shifts
+        returned, which survives the agent first finding several shifts and then narrowing down.
+        """
         if request.shift_id:
             return self._repository.shift(request.shift_id)
-        if len(ledger.shifts) == 1:
-            return self._repository.shift(next(iter(ledger.shifts)))
+        worked_on = {e.shift_id for e in ledger.evaluations.values()} | set(
+            ledger.searched_candidates
+        )
+        candidates = (worked_on & set(ledger.shifts)) or set(ledger.shifts)
+        if len(candidates) == 1:
+            return self._repository.shift(next(iter(candidates)))
         return None

@@ -15,7 +15,8 @@ from shift_assistant.contracts import (
     ExcludedCandidate,
     ReportStatus,
 )
-from shift_assistant.tools.schemas import CandidateEvaluation
+from shift_assistant.tools.outreach import format_local_datetime, unit_label
+from shift_assistant.tools.schemas import CandidateEvaluation, ShiftSummary
 
 
 def fill_status(recommended: int, eligible: int, positions_open: int) -> ReportStatus:
@@ -84,6 +85,22 @@ def coverage_summary(coverage: CandidateCoverage, positions_open: int) -> str:
     return " ".join(sentences)
 
 
+def clarification_summary(shifts: Sequence[ShiftSummary], question: str) -> str:
+    """What find_open_shifts returned, with exact dates, for a report that asks a question.
+
+    Lists the shifts the question names, or every shift found if it names none.
+    """
+    if not shifts:
+        return "No open shift matched the request."
+    named = [s for s in shifts if s.shift_id in question] or list(shifts)
+    listed = "; ".join(
+        f"{s.shift_id}, {unit_label(s.unit)} {s.period} shift at {s.facility_name}, "
+        f"{format_local_datetime(s.start)} to {format_local_datetime(s.end)} ({s.timezone})"
+        for s in sorted(named, key=lambda s: s.start)
+    )
+    return f"Open shifts found: {listed}."
+
+
 def shortlist_phrase(recommended: int, positions_open: int) -> str:
     """E.g. '2 eligible clinicians shortlisted for 2 open positions'. Nobody is booked yet."""
     return (
@@ -118,6 +135,8 @@ def _vetting_sentence(coverage: CandidateCoverage) -> str:
 
 def _shortlist_sentence(coverage: CandidateCoverage, positions_open: int) -> str:
     if coverage.eligible == 0:
+        if not coverage.full_pool_evaluated:  # unchecked clinicians may still qualify
+            return "No evaluated candidate is eligible, so no one was shortlisted."
         return "Nobody is eligible, so no one was shortlisted."
     sentence = shortlist_phrase(coverage.recommended, positions_open)
     if (open_gap := positions_open - coverage.recommended) > 0:

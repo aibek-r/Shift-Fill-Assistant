@@ -34,10 +34,13 @@ class ShiftFillAssistant:
         repository: StaffingRepository,
         deps: AgentDependencies,
         toolkit: StaffingToolkit,
+        retrieval_degraded: bool = False,
     ) -> None:
         self.settings = settings
         self.repository = repository
-        self._toolkit = toolkit
+        self.toolkit = toolkit
+        # True when the sentence-embedding model failed to load and keyword matching stands in.
+        self.retrieval_degraded = retrieval_degraded
         self.llm_enabled = deps.model is not None
         self._graph = build_agent_graph(deps)
         # Each LLM call costs at most three graph steps (agent, tools or validate, verify).
@@ -88,7 +91,7 @@ class ShiftFillAssistant:
             )
         except ValidationError as exc:
             raise ValueError(describe_validation_error(exc)) from exc
-        output = self._toolkit.draft_outreach(args)
+        output = self.toolkit.draft_outreach(args)
         return output.evidence.drafts[draft_id_for(shift_id, clinician_id)]
 
 
@@ -105,7 +108,7 @@ def build_assistant(
     toolkit = StaffingToolkit(
         repository=repository,
         policies=PolicyKnowledgeBase.from_directory(
-            embedder, settings.data_dir / "policies", settings.retrieval_min_score
+            embedder, settings.data_dir / "policies", policy_min_score(settings, embedder)
         ),
         profiles=ClinicianProfileIndex(embedder, repository.clinicians()),
         engine=EligibilityEngine(settings.expiry_warning_days),
@@ -120,4 +123,12 @@ def build_assistant(
         fallback=DeterministicFallback(repository, toolkit, settings.max_recommendations),
         settings=settings,
     )
-    return ShiftFillAssistant(settings, repository, deps, toolkit)
+    return ShiftFillAssistant(
+        settings, repository, deps, toolkit, retrieval_degraded=not embedder.semantic
+    )
+
+
+def policy_min_score(settings: Settings, embedder: Embedder) -> float:
+    """The relevance cut-off is tuned for sentence embeddings. Keyword-matching scores run much
+    lower, so applying it there would silently drop every policy excerpt."""
+    return settings.retrieval_min_score if embedder.semantic else 0.0

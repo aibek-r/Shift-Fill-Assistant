@@ -12,7 +12,8 @@ types a request such as *"Find two ICU nurses for the St. Mary's night shift on 
 
 > Senior AI Engineer take-home for Florence Healthcare, by
 > [Aibek Rysbek](https://github.com/aibek-r).
-> Stack: Python 3.11+, LangGraph, OpenAI (`gpt-5.4-mini`), fastembed, Pydantic, Streamlit.
+> Stack: Python 3.11+ (tested on 3.13), LangGraph, OpenAI (`gpt-5.4-mini`), fastembed, Pydantic,
+> Streamlit 1.64.
 
 ## Quick start
 
@@ -24,13 +25,15 @@ cp .env.example .env              # then set OPENAI_API_KEY
 
 streamlit run app/streamlit_app.py                     # web UI
 shift-assistant "Find two ICU nurses for the St. Mary's night shift on Oct 14"   # CLI
-pytest                                                 # 38 offline tests, no API key needed
+pytest                                                 # 70 offline tests, no API key needed
 ```
 
-The first run downloads a small local embedding model of about 70 MB into `.cache/`. Without an
-API key, the app still runs in deterministic fallback mode.
+The first run downloads a small local embedding model of about 70 MB into `.cache/`. If that
+download fails, search falls back to keyword matching and the UI and CLI say so. Without an API
+key, the app still runs in deterministic fallback mode. `.env.example` pins `REFERENCE_DATE` so
+relative dates match the October 2026 mock shifts.
 
-Docker is optional:
+Docker is optional, and the Dockerfile has not been verified in the final environment:
 `docker build -t shift-fill-assistant . && docker run -p 8501:8501 --env-file .env shift-fill-assistant`
 
 ## Architecture
@@ -69,7 +72,7 @@ flowchart LR
 | --- | --- |
 | **Agent workflow** with multi-step reasoning, tool calling and context management | A LangGraph ReAct loop (`agent` and `tools` nodes) with typed state. The model chooses tools, with parallel calls allowed. The workflow ends only through a validated `submit_recommendation` tool call, enforced by `tool_choice="required"`. |
 | **Tools** (at least 2 or 3) | `find_open_shifts`, `search_facility_policies`, `search_clinicians`, `evaluate_candidates` and `draft_outreach`, plus the submit tool. All data is mocked. |
-| **Retrieval and context engineering** | **RAG** over facility handbooks, one chunk per `##` section, which gives stable citation IDs such as `FAC-001#icu-unit-profile`. **Embeddings and vector search** use local `bge-small` via fastembed. **Context filtering**: a facility only ever sees its own policies plus global ones, through a metadata pre-filter. **PII minimisation**: tools never expose emails, phone numbers or license numbers. **Memory and state**: an `EvidenceLedger` records every fact the tools returned in the run, and tool output is size-capped. |
+| **Retrieval and context engineering** | **RAG** over facility handbooks, one chunk per `##` section, which gives stable citation IDs such as `FAC-001#icu-unit-profile`. **Embeddings and vector search** use local `bge-small` via fastembed. **Context filtering**: a facility only ever sees its own policies plus global ones, through a metadata pre-filter. **PII minimisation**: tools never expose emails, phone numbers or license numbers. **Memory and state**: an `EvidenceLedger` records every fact the tools returned in the run. Tool output is size-capped by dropping whole list items, so the model always receives valid JSON with a `truncated` note. |
 | **Structured outputs** | The final answer is a Pydantic `AgentSubmission` passed as tool arguments. The public output is a typed `StaffingReport` with recommendations, alternates, exclusions with reason codes, candidate coverage counts, issues, trace and metrics. Code writes the summary from the verified lists, so counts never contradict them. |
 | **Reliability** | See the next section. |
 
@@ -85,10 +88,18 @@ language**.
   times with time zone, reply deadline and credential reminders. The LLM writes only a short
   personal note, and a validator rejects contact details or pay rates in it.
 - **Grounding checks with self-repair.** On submission, `check_grounding` confirms that each
-  item came from this run's evidence. The shift, every clinician (vetted and eligible), every
-  citation and every draft must be there. It also confirms that every candidate the search
-  returned was vetted. Problems go back to the model as a tool error, and it gets up to
+  reference came from this run's evidence. The shift, every clinician (vetted and eligible),
+  every citation and every draft must be there, and citations must belong to the shift's facility
+  or the organisation-wide policies. It also confirms that the candidate pool was searched and
+  every clinician in it was vetted, and that each rationale mentions the clinician's credential
+  warnings. Problems go back to the model as a tool error, and it gets up to
   `MAX_REPAIR_ATTEMPTS` tries to fix them.
+- **What is and is not verified.** References, eligibility and coverage are verified by code. The
+  free-text rationale and agent notes are written by the model and are not fact-checked beyond
+  the credential-warning check. Counts and the summary are built by code, and a "no eligible
+  candidates" result says so explicitly when the pool was not fully checked. When the assistant
+  asks a clarifying question, the summary lists exactly the shifts it found, with dates; the
+  model's own explanation is kept as agent notes.
 - **Enforcement.** If repairs run out, the verifier strips whatever is ungrounded and records each
   removal as an issue in the report. Names, warnings, citation text and drafts in the report always
   come from the ledger, never from model text.
@@ -97,9 +108,13 @@ language**.
   the model can recover from. Unexpected tool exceptions are logged and contained without leaking
   internals.
 - **Retries and fallback.** The OpenAI SDK retries 429s, 5xx errors and timeouts with
-  exponential backoff. If the LLM still fails, is missing, or exceeds `MAX_AGENT_STEPS`, the
-  graph routes to a **deterministic fallback**. It uses the same engine and templates and labels
-  the report `mode: fallback`. The UI can simulate an outage to show this.
+  exponential backoff. If the LLM still fails, is missing, or exceeds `MAX_AGENT_STEPS` or
+  `MAX_RUN_SECONDS`, the graph routes to a **deterministic fallback**. It uses the same engine
+  and templates and labels the report `mode: fallback`. It uses the selected shift, else the one
+  shift the agent was working on, and shortlists one clinician per open position (it does not
+  parse a requested shortlist size). The UI can simulate an outage to show this.
+- **Degraded retrieval is visible.** If the embedding model cannot load, keyword matching takes
+  over with a relevance cut-off suited to it, and the UI and CLI show a warning.
 - **Prompt-injection hygiene.** The prompt says tool data is data, not instructions. One mock
   profile, Aisha Rahman, contains an injection attempt. She is ineligible anyway, and the verifier
   would drop her even if the model complied.
@@ -126,21 +141,34 @@ tests below.
 
 ## Testing
 
-`pytest` runs 38 tests offline in under a second. They use a hashing embedder and a scripted chat
-model.
+`pytest` runs 70 tests offline in about a second. They use a hashing embedder and a scripted
+chat model, so they prove the workflow's control flow and safeguards, not the live model's
+judgement.
 
 - **Eligibility.** Every blocker type, warnings, and the boundary where a credential expires on
   the shift's last day.
-- **Retrieval.** Chunk IDs, ranking, and proof that a facility's search never returns another
-  facility's policies.
+- **Retrieval.** Chunk IDs, ranking, proof that a facility's search never returns another
+  facility's policies, and the keyword fallback when the embedding model cannot load.
 - **Tools.** PII is never exposed. Errors are readable. Exceptions are contained. Outreach for
-  ineligible clinicians and notes with pay rates are refused.
+  ineligible clinicians and notes with pay rates are refused. Oversized output stays valid JSON.
 - **Workflow.** The happy path. A hallucinated candidate sent back for repair. Ungrounded content
-  stripped once repairs run out. Incomplete vetting caught. An unparseable answer, an LLM outage,
-  a missing key and a step-budget overrun all degrading to the fallback. Malformed tool-call JSON
-  and an early submit reported back to the model.
+  stripped once repairs run out. Incomplete vetting and an unsearched pool caught, including a
+  "no eligible" claim after checking one clinician. Another facility's citation dropped. A
+  rationale that omits a credential warning sent back. An unparseable answer, an LLM outage, a
+  missing key, and step- and time-budget overruns all degrading to the fallback, including after
+  the agent narrowed several shifts down to one. Malformed tool-call JSON and an early submit
+  reported back to the model.
+- **Reporting.** Summary counts always match the report lists, are rebuilt after verification
+  removes a recommendation, and never claim full coverage unless it was confirmed.
+- **Outreach review.** Edited notes are revalidated, keep the verified shift details, and editing
+  an approved message withdraws the approval. Approvals never carry over to a new run.
+- **Prompts.** The model is told to keep stated preferences and willingness distinct.
 
-`ruff check`, `ruff format --check` and `mypy --strict` all pass on `src/`.
+What needs a live model, and is not covered here: ranking quality, how well the model follows
+the wording rules, and the rate of grounding problems. The six examples are live runs.
+
+`ruff check`, `ruff format --check` and `mypy --strict` all pass on `src/`, `app/`, `scripts/`
+and `tests/`.
 
 ## Configuration
 
@@ -152,8 +180,12 @@ All settings live in `config.py` and can be overridden through environment varia
 | `OPENAI_MODEL` | `gpt-5.4-mini` | Any tool-calling OpenAI model |
 | `OPENAI_REASONING_EFFORT` | `low` | Set `none` for non-reasoning models such as `gpt-4.1-mini` |
 | `MAX_AGENT_STEPS` / `MAX_REPAIR_ATTEMPTS` | `12` / `2` | Loop budgets |
+| `MAX_RUN_SECONDS` | `180` | Wall-clock budget, checked before each LLM call |
+| `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | `60` / `3` | Per-call timeout and SDK retries |
+| `MAX_RECOMMENDATIONS` | `5` | Upper bound on the shortlist |
+| `RETRIEVAL_MIN_SCORE` | `0.5` | Policy relevance cut-off for the embedding model (keyword fallback uses `0`) |
 | `EXPIRY_WARNING_DAYS` | `30` | Window for the credential-expiring warning |
-| `REFERENCE_DATE` | today | Pins "today". The mock shifts are in October 2026. |
+| `REFERENCE_DATE` | today (`2026-10-02` in `.env.example`) | Pins "today". The mock shifts are in October 2026. |
 
 ## Mock data
 

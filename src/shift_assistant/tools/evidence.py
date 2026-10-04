@@ -72,9 +72,10 @@ class EvidenceLedger(BaseModel):
         return [e for e in self.evaluations.values() if e.shift_id == shift_id]
 
     def unvetted_candidates(self, shift_id: str) -> list[str]:
-        """Candidates surfaced by search for this shift that were never compliance-checked."""
-        return [
-            cid
-            for cid in self.searched_candidates.get(shift_id, [])
-            if self.evaluation(shift_id, cid) is None
-        ]
+        """Clinicians in the shift's candidate pool that were never compliance-checked.
+
+        The pool is recorded by search_clinicians, so this also covers clinicians the search
+        did not list because of its `limit`.
+        """
+        pool = self.candidate_pools.get(shift_id) or self.searched_candidates.get(shift_id, [])
+        return [cid for cid in pool if self.evaluation(shift_id, cid) is None]

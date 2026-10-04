@@ -33,6 +33,9 @@ class Settings(BaseSettings):
 
     # Agent budgets and guardrails
     max_agent_steps: int = Field(default=12, ge=1, description="Max LLM calls per request.")
+    max_run_seconds: float = Field(
+        default=180.0, gt=0, description="Wall-clock budget; checked before each LLM call."
+    )
     max_repair_attempts: int = Field(default=2, ge=0, description="Max rejected submissions.")
     max_recommendations: int = Field(default=5, ge=1)
     tool_output_char_limit: int = Field(default=6000, ge=500)

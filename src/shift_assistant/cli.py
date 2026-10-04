@@ -34,6 +34,8 @@ def main(argv: list[str] | None = None) -> int:
     assistant = build_assistant()
     if not assistant.llm_enabled:
         print("OPENAI_API_KEY is not set: running the deterministic fallback.", file=sys.stderr)
+    if assistant.retrieval_degraded:
+        print("Embedding model unavailable: using keyword matching for search.", file=sys.stderr)
     report = assistant.run(request, on_event=lambda e: print(format_event(e), file=sys.stderr))
 
     print(report.model_dump_json(indent=2) if args.json else render_markdown(report))

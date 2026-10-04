@@ -16,9 +16,8 @@ from shift_assistant.contracts import (
 from shift_assistant.reliability.reporting import coverage_summary, fill_status
 from shift_assistant.retrieval.embedder import HashingEmbedder
 from tests.conftest import AssistantFactory, ai, make_settings, tool_call
-from tests.test_agent_workflow import REQUEST, SUBMIT, rec, research_steps, submission
+from tests.test_agent_workflow import ICU_POOL, REQUEST, SUBMIT, rec, research_steps, submission
 
-ICU_POOL = [f"C-10{i}" for i in range(1, 10)]
 FULL_POOL_SUMMARY = (
     "9 candidates evaluated, covering the shift's full candidate pool: 3 eligible, 6 excluded. "
     "2 eligible clinicians shortlisted for 2 open positions; "
@@ -73,11 +72,18 @@ def test_fallback_summary_uses_the_same_counts() -> None:
 def test_summary_does_not_claim_full_coverage_when_the_pool_was_never_searched(
     scripted_assistant: AssistantFactory,
 ) -> None:
-    final = submission(rec("C-101"), rec("C-104"))
-    assistant, _ = scripted_assistant([*research_steps(), ai(tool_call(SUBMIT, **final))])
+    steps = [
+        ai(tool_call("find_open_shifts", shift_id="SHF-1001")),
+        ai(tool_call("evaluate_candidates", shift_id="SHF-1001", clinician_ids=["C-101", "C-102"])),
+    ]
+    final = submission(rec("C-101"))
+    assistant, _ = scripted_assistant(
+        [*steps, ai(tool_call(SUBMIT, **final))], max_repair_attempts=0
+    )
 
     report = assistant.run(REQUEST)
 
+    assert [i.code for i in report.issues] == ["POOL_NOT_SEARCHED"]
     assert "full" not in report.summary
     assert (
         "The shift's candidate pool was not searched, so coverage is unconfirmed." in report.summary
@@ -102,6 +108,7 @@ def test_summary_reports_unevaluated_pool_members(scripted_assistant: AssistantF
         report.summary
     )
     assert report.coverage is not None and len(report.coverage.unevaluated_ids) == 8
+    assert [i.code for i in report.issues] == ["INCOMPLETE_VETTING"]  # beyond the search limit
 
 
 def test_summary_is_rebuilt_after_verification_removes_a_recommendation(
@@ -119,7 +126,7 @@ def test_summary_is_rebuilt_after_verification_removes_a_recommendation(
     assert report.status is ReportStatus.PARTIAL
     assert report.summary.endswith(
         "1 eligible clinician shortlisted for 2 open positions; 1 position still without a "
-        "candidate; 1 eligible alternate was not shortlisted. "
+        "candidate; 2 eligible alternates were not shortlisted. "
         "Verification removed 1 recommendation that failed evidence checks."
     )
     assert report.agent_notes is None  # described a shortlist that no longer exists
@@ -140,6 +147,13 @@ def test_summary_is_rebuilt_after_verification_removes_a_recommendation(
             1,
             "3 candidates evaluated, covering the shift's full candidate pool: 0 eligible, "
             "3 excluded. Nobody is eligible, so no one was shortlisted.",
+        ),
+        (
+            CandidateCoverage(pool_size=9, evaluated=1, excluded=1, unevaluated_ids=["C-1"] * 8),
+            2,
+            "1 candidate evaluated, covering 1 of 9 in the shift's pool (8 not evaluated): "
+            "0 eligible, 1 excluded. "
+            "No evaluated candidate is eligible, so no one was shortlisted.",
         ),
         (
             CandidateCoverage(pool_size=0),

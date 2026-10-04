@@ -5,8 +5,8 @@
                |                       |--(fixable)-> agent             (self-repair)
                |--(failure)-------> fallback -> END   <--(unrecoverable)--|
 
-Budgets (LLM calls, repair attempts) bound the loop; any LLM failure degrades to the
-deterministic fallback instead of an error page.
+Budgets (LLM calls, wall-clock time, repair attempts) bound the loop; any LLM failure degrades
+to the deterministic fallback instead of an error page.
 """
 
 from __future__ import annotations
@@ -77,6 +77,8 @@ class _Nodes:
             return {"failure": "no LLM configured (OPENAI_API_KEY is missing)"}
         if state["llm_calls"] >= self._settings.max_agent_steps:
             return {"failure": f"step budget of {self._settings.max_agent_steps} LLM calls used up"}
+        if time.perf_counter() - state["started_at"] > self._settings.max_run_seconds:
+            return {"failure": f"time budget of {self._settings.max_run_seconds:g}s used up"}
 
         started = time.perf_counter()
         step = len(state["trace"]) + 1

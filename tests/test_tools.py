@@ -6,8 +6,8 @@ from pydantic import BaseModel
 
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.tools.evidence import EvidenceLedger
-from shift_assistant.tools.registry import ToolRegistry, ToolSpec
-from shift_assistant.tools.toolkit import ToolOutput
+from shift_assistant.tools.registry import ToolRegistry, ToolSpec, build_tool_registry
+from shift_assistant.tools.toolkit import StaffingToolkit, ToolOutput
 
 
 def test_unknown_facility_error_lists_known_facilities(registry: ToolRegistry) -> None:
@@ -155,7 +155,27 @@ def test_long_outputs_are_truncated() -> None:
         output_char_limit=500,
     )
     result = registry.execute("big", {"text": "abc"})
+    payload = json.loads(result.content)  # still valid JSON
 
     assert result.ok
-    assert len(result.content) < 600
-    assert result.content.endswith("characters]")
+    assert len(result.content) <= 500
+    assert payload["text"].endswith("...")
+    assert "shortened" in payload["truncated"]
+
+
+def test_long_lists_are_trimmed_by_whole_items(
+    toolkit: StaffingToolkit, repository: StaffingRepository
+) -> None:
+    registry = build_tool_registry(toolkit, output_char_limit=2000)
+    all_ids = [c.id for c in repository.clinicians()]
+
+    result = registry.execute(
+        "evaluate_candidates", {"shift_id": "SHF-1001", "clinician_ids": all_ids}
+    )
+    payload = json.loads(result.content)
+
+    assert len(result.content) <= 2000
+    shown = len(payload["evaluations"])
+    assert 0 < shown < len(all_ids)
+    assert payload["truncated"].startswith(f"{len(all_ids) - shown} evaluations item(s) omitted")
+    assert len(result.evidence.evaluations) == len(all_ids)  # the ledger keeps everything

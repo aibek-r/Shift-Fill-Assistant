@@ -16,14 +16,19 @@ SUBMIT = "submit_recommendation"
 REQUEST = StaffingRequest(text="Two ICU nurses for the St. Mary's night shift on Oct 14, please.")
 ICU_PROFILE = "FAC-001#icu-unit-profile"
 MARIA_DRAFT = "DRAFT-SHF-1001-C-101"
+ICU_POOL = ["C-101", "C-102", "C-103", "C-104", "C-105", "C-106", "C-107", "C-108", "C-109"]
+DANIEL_RATIONALE = "Eligible ICU nurse; his ACLS expires soon after the shift, so it needs renewal."
 
 
 def rec(
-    clinician_id: str, citations: tuple[str, ...] = (), draft: str | None = None
+    clinician_id: str,
+    citations: tuple[str, ...] = (),
+    draft: str | None = None,
+    rationale: str = "Eligible per evaluate_candidates and matches the unit preferences.",
 ) -> dict[str, Any]:
     return {
         "clinician_id": clinician_id,
-        "rationale": "Eligible per evaluate_candidates and matches the unit preferences.",
+        "rationale": rationale,
         "citation_ids": list(citations),
         "draft_id": draft,
     }
@@ -47,19 +52,16 @@ def clarification() -> dict[str, Any]:
 
 
 def research_steps() -> list[AIMessage]:
-    """Typical ReAct steps: resolve the shift, retrieve policy, vet, draft."""
+    """Typical ReAct steps: resolve the shift, retrieve policy, search and vet the pool, draft."""
     return [
         ai(tool_call("find_open_shifts", shift_id="SHF-1001")),
         ai(
             tool_call(
                 "search_facility_policies", facility_id="FAC-001", query="ICU unit profile", top_k=8
             ),
-            tool_call(
-                "evaluate_candidates",
-                shift_id="SHF-1001",
-                clinician_ids=["C-101", "C-102", "C-104"],
-            ),
+            tool_call("search_clinicians", shift_id="SHF-1001", query="ICU nights"),
         ),
+        ai(tool_call("evaluate_candidates", shift_id="SHF-1001", clinician_ids=ICU_POOL)),
         ai(
             tool_call(
                 "draft_outreach",
@@ -72,7 +74,9 @@ def research_steps() -> list[AIMessage]:
 
 
 def test_happy_path_produces_a_grounded_report(scripted_assistant: AssistantFactory) -> None:
-    final = submission(rec("C-101", (ICU_PROFILE,), MARIA_DRAFT), rec("C-104"))
+    final = submission(
+        rec("C-101", (ICU_PROFILE,), MARIA_DRAFT), rec("C-104", rationale=DANIEL_RATIONALE)
+    )
     assistant, _ = scripted_assistant([*research_steps(), ai(tool_call(SUBMIT, **final))])
 
     report = assistant.run(REQUEST)
@@ -83,9 +87,17 @@ def test_happy_path_produces_a_grounded_report(scripted_assistant: AssistantFact
     assert [c.chunk_id for c in maria.citations] == [ICU_PROFILE]
     assert maria.outreach is not None and maria.outreach.draft_id == MARIA_DRAFT
     assert [w.code for w in daniel.warnings] == [CheckCode.CREDENTIAL_EXPIRING_SOON]
-    assert [e.clinician_id for e in report.excluded] == ["C-102"]
+    assert {e.clinician_id for e in report.excluded} == {
+        "C-102",
+        "C-103",
+        "C-105",
+        "C-106",
+        "C-108",
+        "C-109",
+    }
+    assert [a.clinician_id for a in report.alternates] == ["C-107"]
     assert report.issues == []
-    assert (report.metrics.llm_calls, report.metrics.tool_calls) == (4, 4)
+    assert (report.metrics.llm_calls, report.metrics.tool_calls) == (5, 5)
 
 
 def test_hallucinated_and_ineligible_candidates_are_sent_back_for_repair(
@@ -104,7 +116,7 @@ def test_hallucinated_and_ineligible_candidates_are_sent_back_for_repair(
     assert "C-999 was not vetted" in str(feedback.content)
     assert "C-102 is not eligible" in str(feedback.content)
     assert [r.clinician_id for r in report.recommendations] == ["C-101"]
-    assert [a.clinician_id for a in report.alternates] == ["C-104"]  # eligible, not shortlisted
+    assert [a.clinician_id for a in report.alternates] == ["C-104", "C-107"]  # not shortlisted
     assert report.status is ReportStatus.PARTIAL  # 1 candidate for 2 open positions
     assert [e.ok for e in report.trace if e.kind == "validation"] == [False, True]
 
@@ -186,6 +198,30 @@ def test_clarification_question_is_returned(scripted_assistant: AssistantFactory
     assert report.status is ReportStatus.NEEDS_CLARIFICATION
     assert report.clarification_question == clarification()["clarification_question"]
     assert report.recommendations == []
+    # The summary is built from find_open_shifts, not from the model's description of it.
+    assert report.summary == (
+        "Open shifts found: SHF-1001, ICU night shift at St. Mary's Medical Center, "
+        "Wed, Oct 14, 2026, 7:00 PM to Thu, Oct 15, 2026, 7:00 AM (America/Chicago); "
+        "SHF-1003, ICU day shift at St. Mary's Medical Center, "
+        "Fri, Oct 16, 2026, 7:00 AM to Fri, Oct 16, 2026, 7:00 PM (America/Chicago)."
+    )
+    assert report.agent_notes == clarification()["summary"]
+
+
+def test_clarification_without_matching_shifts_says_so(
+    scripted_assistant: AssistantFactory,
+) -> None:
+    unknown = clarification() | {"clarification_question": "Which facility did you mean?"}
+    assistant, _ = scripted_assistant(
+        [
+            ai(tool_call("find_open_shifts", facility="Mercy General")),  # unknown facility
+            ai(tool_call(SUBMIT, **unknown)),
+        ]
+    )
+
+    report = assistant.run(StaffingRequest(text="Find a nurse for Mercy General tomorrow night."))
+
+    assert report.summary == "No open shift matched the request."
 
 
 def test_protocol_errors_are_reported_back_to_the_model(
@@ -217,9 +253,6 @@ def test_protocol_errors_are_reported_back_to_the_model(
     submit_error = model.received[2][-1]
     assert isinstance(submit_error, ToolMessage) and "on its own" in str(submit_error.content)
     assert report.status is ReportStatus.NEEDS_CLARIFICATION
-
-
-ICU_POOL = ["C-101", "C-102", "C-103", "C-104", "C-105", "C-106", "C-107", "C-108", "C-109"]
 
 
 def partial_vetting_steps() -> list[AIMessage]:
@@ -266,3 +299,121 @@ def test_incomplete_vetting_is_flagged_when_repairs_run_out(
 
     assert [r.clinician_id for r in report.recommendations] == ["C-107"]
     assert [(i.code, i.severity) for i in report.issues] == [("INCOMPLETE_VETTING", "warning")]
+
+
+def vet_one_without_searching() -> list[AIMessage]:
+    """A lazy agent: checks one (ineligible) clinician and never searches the pool."""
+    return [
+        ai(tool_call("find_open_shifts", shift_id="SHF-1001")),
+        ai(tool_call("evaluate_candidates", shift_id="SHF-1001", clinician_ids=["C-102"])),
+    ]
+
+
+def test_no_eligible_claim_after_partial_vetting_is_sent_back(
+    scripted_assistant: AssistantFactory,
+) -> None:
+    nobody = submission()
+    search = ai(tool_call("search_clinicians", shift_id="SHF-1001"))
+    vet_all = ai(tool_call("evaluate_candidates", shift_id="SHF-1001", clinician_ids=ICU_POOL))
+    assistant, model = scripted_assistant(
+        [
+            *vet_one_without_searching(),
+            ai(tool_call(SUBMIT, **nobody)),
+            search,
+            vet_all,
+            ai(tool_call(SUBMIT, **submission(rec("C-101"), rec("C-107")))),
+        ]
+    )
+
+    report = assistant.run(REQUEST)
+
+    feedback = model.received[3][-1]
+    assert isinstance(feedback, ToolMessage) and "search_clinicians was never called" in str(
+        feedback.content
+    )
+    assert report.status is ReportStatus.READY
+    assert report.coverage is not None and report.coverage.full_pool_evaluated
+
+
+def test_no_eligible_claim_is_qualified_when_repairs_run_out(
+    scripted_assistant: AssistantFactory,
+) -> None:
+    assistant, _ = scripted_assistant(
+        [*vet_one_without_searching(), ai(tool_call(SUBMIT, **submission()))],
+        max_repair_attempts=0,
+    )
+
+    report = assistant.run(REQUEST)
+
+    assert report.status is ReportStatus.NO_ELIGIBLE_CANDIDATES
+    assert "No evaluated candidate is eligible" in report.summary
+    assert "Nobody is eligible" not in report.summary
+    assert [i.code for i in report.issues] == ["POOL_NOT_SEARCHED"]
+
+
+def test_another_facilitys_policy_cannot_be_cited(scripted_assistant: AssistantFactory) -> None:
+    steps = [
+        ai(tool_call("find_open_shifts", shift_id="SHF-1001")),
+        ai(
+            tool_call("search_facility_policies", facility_id="FAC-002", query="parking", top_k=8),
+            tool_call("search_clinicians", shift_id="SHF-1001"),
+        ),
+        ai(tool_call("evaluate_candidates", shift_id="SHF-1001", clinician_ids=ICU_POOL)),
+    ]
+    final = submission(rec("C-101", ("FAC-002#parking",)))
+    assistant, _ = scripted_assistant(
+        [*steps, ai(tool_call(SUBMIT, **final))], max_repair_attempts=0
+    )
+
+    report = assistant.run(REQUEST)
+
+    assert report.recommendations[0].citations == []
+    assert [i.code for i in report.issues] == ["OTHER_FACILITY_CITATION"]
+
+
+def test_rationale_must_mention_the_credential_warning(
+    scripted_assistant: AssistantFactory,
+) -> None:
+    silent = submission(rec("C-101"), rec("C-104", rationale="Strong ICU nurse; no warnings."))
+    fixed = submission(rec("C-101"), rec("C-104", rationale=DANIEL_RATIONALE))
+    research = [step for step in research_steps() if step.tool_calls[0]["name"] != "draft_outreach"]
+    assistant, model = scripted_assistant(
+        [*research, ai(tool_call(SUBMIT, **silent)), ai(tool_call(SUBMIT, **fixed))]
+    )
+
+    report = assistant.run(REQUEST)
+
+    feedback = model.received[-1][-1]
+    assert isinstance(feedback, ToolMessage) and "must mention its credential warning" in str(
+        feedback.content
+    )
+    assert "ACLS" in str(feedback.content)
+    assert report.issues == []
+
+
+def test_fallback_uses_the_shift_the_agent_narrowed_down_to(
+    scripted_assistant: AssistantFactory,
+) -> None:
+    assistant, _ = scripted_assistant(
+        [
+            ai(tool_call("find_open_shifts", facility="St. Mary's", unit="ICU")),  # two shifts
+            ai(tool_call("find_open_shifts", shift_id="SHF-1001")),
+            ai(tool_call("evaluate_candidates", shift_id="SHF-1001", clinician_ids=["C-101"])),
+            RuntimeError("503 Service Unavailable"),
+        ]
+    )
+
+    report = assistant.run(REQUEST)
+
+    assert (report.mode, report.status) == (RunMode.FALLBACK, ReportStatus.READY)
+    assert report.shift is not None and report.shift.shift_id == "SHF-1001"
+
+
+def test_time_budget_degrades_to_rules(scripted_assistant: AssistantFactory) -> None:
+    assistant, model = scripted_assistant([], max_run_seconds=1e-9)
+
+    report = assistant.run(StaffingRequest(text="Fill the ICU night shift", shift_id="SHF-1001"))
+
+    assert model.received == []  # the budget is checked before any LLM call
+    assert report.mode is RunMode.FALLBACK
+    assert "time budget" in report.issues[0].message

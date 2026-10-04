@@ -27,6 +27,7 @@ from shift_assistant.reliability.grounding import (
 from shift_assistant.reliability.reporting import (
     alternates,
     candidate_coverage,
+    clarification_summary,
     coverage_summary,
     exclusions,
     fill_status,
@@ -45,7 +46,12 @@ def build_agent_report(
             request=request,
             status=ReportStatus.NEEDS_CLARIFICATION,
             mode=RunMode.AGENT,
-            summary=submission.summary,
+            # The model's own explanation can misdescribe dates, so the summary states only the
+            # shifts find_open_shifts returned; the model's text is kept as notes.
+            summary=clarification_summary(
+                list(ledger.shifts.values()), submission.clarification_question or ""
+            ),
+            agent_notes=submission.summary,
             clarification_question=submission.clarification_question,
         )
 

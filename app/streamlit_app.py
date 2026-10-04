@@ -60,7 +60,11 @@ PROGRESS_LABELS = {
 STATUS_STYLE = {
     ReportStatus.READY: (st.success, ":material/check_circle:", "Shortlist ready"),
     ReportStatus.PARTIAL: (st.warning, ":material/warning:", "Partial shortlist"),
-    ReportStatus.NO_ELIGIBLE_CANDIDATES: (st.error, ":material/block:", "No eligible clinicians"),
+    ReportStatus.NO_ELIGIBLE_CANDIDATES: (
+        st.error,
+        ":material/block:",
+        "No eligible clinicians found",
+    ),
     ReportStatus.NEEDS_CLARIFICATION: (st.info, ":material/help:", "Needs clarification"),
     ReportStatus.FAILED: (st.error, ":material/error:", "Failed"),
 }
@@ -76,7 +80,8 @@ MODE_LABELS = {
         "blue",
         "smart_toy",
         "AI agent",
-        "The LLM planned and ranked; rules decided compliance and every claim was verified.",
+        "The LLM planned, ranked and wrote the explanations. Rules decided compliance, and every "
+        "referenced clinician, policy and draft was checked against tool evidence.",
     ),
     RunMode.FALLBACK: (
         "orange",
@@ -90,7 +95,12 @@ MODE_LABELS = {
 ISSUE_ACTIONS = {
     "INCOMPLETE_VETTING": "Some candidates in the pool were not compliance-checked, so a better "
     "match may exist.",
+    "POOL_NOT_SEARCHED": "The shift's candidate pool was never searched, so other eligible "
+    "clinicians may exist.",
     "UNKNOWN_CITATION": "A source was removed from a rationale because it could not be verified.",
+    "OTHER_FACILITY_CITATION": "A source from another facility was removed from a rationale.",
+    "RATIONALE_WARNING_MISMATCH": "A rationale does not mention a credential warning. Rely on the "
+    "credential badges, not the rationale text.",
     "INVALID_DRAFT": "An outreach draft was removed because it could not be verified. Write that "
     "message manually.",
 }
@@ -137,6 +147,11 @@ def main() -> None:
     st.set_page_config(page_title="Shift Fill Assistant", page_icon=":hospital:", layout="wide")
     simulate_outage, selected_shift = render_sidebar()
     assistant = get_assistant(simulate_outage)
+    if assistant.retrieval_degraded:
+        st.sidebar.warning(
+            "The semantic search model could not be loaded, so keyword matching is used. "
+            "Policy and profile search will be less accurate."
+        )
 
     render_header()
     request = render_request_form(selected_shift)
@@ -195,8 +210,9 @@ def render_header() -> None:
         st.markdown(
             "- **Compliance is rule-based.** Licensure, certifications, experience, "
             "double-booking and rest time are checked by deterministic code, never by the model.\n"
-            "- **Every claim is verified** against tool evidence before it reaches you "
-            "(see Technical details).\n"
+            "- **References are verified.** Every clinician, policy citation and draft in the "
+            "answer is checked against tool evidence before it reaches you (see Technical "
+            "details). Explanations are written by the model.\n"
             "- **Nothing is sent.** A coordinator reviews, edits and approves each outreach "
             "message; delivery is simulated in this demo."
         )
@@ -254,8 +270,11 @@ def render_report(
     st.markdown(f"**Summary:** {report.summary}")
     color, mode_icon, mode, explanation = MODE_LABELS[report.mode]
     st.markdown(f"**Report mode:** {badge(color, mode_icon, mode)}", help=explanation)
-    if report.clarification_question:
-        st.markdown(f"**Question:** {report.clarification_question}")
+    if report.coverage is None:
+        # Nothing was evaluated (a clarifying question or a failed run), so zero counts and
+        # empty candidate tabs would only suggest a search that never happened.
+        render_technical_details(report)
+        return
     if report.shift:
         render_shift_overview(report.shift)
     render_counts(report)
@@ -295,6 +314,16 @@ def render_report(
 
 
 def status_message(report: StaffingReport) -> str:
+    if report.status is ReportStatus.NEEDS_CLARIFICATION and report.clarification_question:
+        return report.clarification_question
+    coverage = report.coverage
+    if report.status is ReportStatus.NO_ELIGIBLE_CANDIDATES and (
+        coverage is None or not coverage.full_pool_evaluated
+    ):
+        return (
+            "No evaluated candidate passed the compliance checks, but the shift's candidate pool "
+            "was not fully checked. Review before closing this shift."
+        )
     if report.status not in (ReportStatus.READY, ReportStatus.PARTIAL) or report.shift is None:
         return STATUS_MESSAGES.get(report.status, "")
     recommended, positions = len(report.recommendations), report.shift.positions_open

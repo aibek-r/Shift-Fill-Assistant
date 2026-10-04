@@ -6,6 +6,7 @@ error result the model can read and recover from, so one bad call cannot crash t
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -75,9 +76,7 @@ class ToolRegistry:
             logger.exception("Tool %s failed", name)
             return failure(f"{name} failed unexpectedly. Try different arguments.")
 
-        content = _truncate(
-            output.result.model_dump_json(exclude_none=True), self._output_char_limit
-        )
+        content = fit_to_limit(output.result, self._output_char_limit)
         return ToolExecution(name, True, content, output.evidence, _ms(started))
 
 
@@ -149,10 +148,44 @@ def describe_validation_error(exc: ValidationError) -> str:
     )
 
 
-def _truncate(text: str, limit: int) -> str:
-    if len(text) <= limit:
-        return text
-    return f"{text[:limit]}... [truncated {len(text) - limit} characters]"
+def fit_to_limit(result: BaseModel, limit: int) -> str:
+    """Serialize a tool result in at most `limit` characters while keeping it valid JSON.
+
+    Drops trailing items from the largest list (or shortens the longest string) and adds a
+    `truncated` note, so the model knows the result is incomplete instead of reading cut-off JSON.
+    The ledger still holds the full result.
+    """
+    payload: dict[str, Any] = result.model_dump(mode="json", exclude_none=True)
+    text = _dumps(payload)
+    omitted = 0
+    while len(text) > limit and (field := _largest_field(payload)) is not None:
+        value = payload[field]
+        if isinstance(value, list):
+            value.pop()
+            omitted += 1
+            payload["truncated"] = f"{omitted} {field} item(s) omitted to fit the output limit."
+        else:
+            keep = max(0, len(value) - (len(text) - limit) - 80)
+            payload[field] = f"{value[:keep]}..."
+            payload["truncated"] = f"{field} shortened to fit the output limit."
+        text = _dumps(payload)
+    if len(text) > limit:
+        return _dumps({"truncated": "Result too large for the output limit. Narrow the request."})
+    return text
+
+
+def _largest_field(payload: dict[str, Any]) -> str | None:
+    shrinkable = [
+        key
+        for key, value in payload.items()
+        if key != "truncated"
+        and ((isinstance(value, list) and value) or (isinstance(value, str) and len(value) > 3))
+    ]
+    return max(shrinkable, key=lambda key: len(_dumps(payload[key])), default=None)
+
+
+def _dumps(payload: Any) -> str:
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 def _ms(started: float) -> int:

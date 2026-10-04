@@ -8,6 +8,7 @@ from datetime import date
 from typing import Any
 
 import pytest
+from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.runnables import RunnableLambda
 
@@ -30,7 +31,7 @@ def make_settings(**overrides: Any) -> Settings:
         "retrieval_min_score": 0.0,
         "data_dir": DATA_DIR,
     }
-    return Settings(_env_file=None, **{**base, **overrides})  # type: ignore[call-arg]
+    return Settings(_env_file=None, **{**base, **overrides})
 
 
 @pytest.fixture(scope="session")
@@ -74,8 +75,9 @@ class ScriptedModel:
         self._responses = list(responses)
         self.received: list[list[BaseMessage]] = []
 
-    def __call__(self, messages: list[BaseMessage]) -> AIMessage:
-        self.received.append(list(messages))
+    def __call__(self, messages: LanguageModelInput) -> BaseMessage:
+        assert isinstance(messages, list), "the workflow always sends a message list"
+        self.received.append([m for m in messages if isinstance(m, BaseMessage)])
         if not self._responses:
             raise AssertionError("ScriptedModel ran out of responses")
         response = self._responses.pop(0)

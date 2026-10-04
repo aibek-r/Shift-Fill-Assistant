@@ -51,7 +51,8 @@ class AgentSubmission(BaseModel):
             "2-4 sentences for the coordinator. When completed: your ranking judgement, i.e. why "
             "the shortlisted clinicians come first and why each eligible clinician you did not "
             "shortlist ranks lower. Do not state how many clinicians were evaluated, eligible or "
-            "excluded; the report adds verified counts. When asking: what you found."
+            "excluded; the report adds verified counts. When asking: what you found, with exact "
+            "dates, and why it does not match the request (e.g. no shift in the requested week)."
         ),
     )
     clarification_question: str | None = Field(

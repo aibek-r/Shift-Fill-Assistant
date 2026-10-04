@@ -23,6 +23,11 @@ class Embedder(Protocol):
     @property
     def name(self) -> str: ...
 
+    @property
+    def semantic(self) -> bool:
+        """True for sentence embeddings; False for keyword matching, whose scores run lower."""
+        ...
+
     def embed_documents(self, texts: Sequence[str]) -> Matrix: ...
 
     def embed_query(self, text: str) -> Vector: ...
@@ -41,6 +46,10 @@ class FastEmbedEmbedder:
     @property
     def name(self) -> str:
         return self._name
+
+    @property
+    def semantic(self) -> bool:
+        return True
 
     def embed_documents(self, texts: Sequence[str]) -> Matrix:
         return np.asarray(list(self._model.passage_embed(list(texts))), dtype=np.float32)
@@ -62,6 +71,10 @@ class HashingEmbedder:
     @property
     def name(self) -> str:
         return f"hashing-{self._dimensions}"
+
+    @property
+    def semantic(self) -> bool:
+        return False
 
     def embed_documents(self, texts: Sequence[str]) -> Matrix:
         return np.stack([self.embed_query(text) for text in texts]).astype(np.float32)
