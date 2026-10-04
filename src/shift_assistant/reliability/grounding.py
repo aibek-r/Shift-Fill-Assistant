@@ -124,7 +124,9 @@ def check_grounding(
             )
         )
     facility_scopes = {ledger.shifts[shift_id].facility_id, GLOBAL_SCOPE}
+    cap = min(target, max_recommendations)
     seen: set[str] = set()
+    verified_count = 0  # counts verified picks, so a dropped pick never displaces a valid one
     for index, rec in enumerate(submission.recommendations):
         cid = rec.clinician_id
         evaluation = ledger.evaluation(shift_id, cid)
@@ -132,15 +134,6 @@ def check_grounding(
             problems.append(_drop(index, "DUPLICATE_CANDIDATE", f"{cid} is recommended twice."))
             continue
         seen.add(cid)
-        if index >= min(target, max_recommendations):
-            problems.append(
-                _drop(
-                    index,
-                    "TOO_MANY_CANDIDATES",
-                    f"At most {min(target, max_recommendations)} allowed for this request.",
-                )
-            )
-            continue
         if evaluation is None:
             problems.append(
                 _drop(
@@ -155,6 +148,12 @@ def check_grounding(
             reasons = "; ".join(b.message for b in evaluation.blockers)
             problems.append(_drop(index, "INELIGIBLE", f"{cid} is not eligible: {reasons}"))
             continue
+        if verified_count >= cap:
+            problems.append(
+                _drop(index, "TOO_MANY_CANDIDATES", f"At most {cap} allowed for this request.")
+            )
+            continue
+        verified_count += 1
 
         for chunk_id in rec.citation_ids:
             excerpt = ledger.policy_excerpts.get(chunk_id)
@@ -199,8 +198,6 @@ def check_grounding(
                 )
             )
     if request is not None:
-        dropped = {p.index for p in problems if p.action is GroundingAction.DROP_RECOMMENDATION}
-        verified_count = len(submission.recommendations) - len(dropped)
         eligible = sum(e.eligible for e in ledger.evaluations_for(shift_id))
         attainable = min(target, eligible, max_recommendations)
         if verified_count < attainable:

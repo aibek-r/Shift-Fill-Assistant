@@ -8,13 +8,17 @@ from langchain_core.messages import AIMessage
 from shift_assistant.assistant import build_assistant
 from shift_assistant.contracts import (
     CandidateCoverage,
+    CandidateRecommendation,
+    Origin,
     ReportStatus,
     RunMode,
     StaffingReport,
     StaffingRequest,
 )
+from shift_assistant.reliability.completion import DeterministicCompletion
 from shift_assistant.reliability.reporting import coverage_summary, fill_status
 from shift_assistant.retrieval.embedder import HashingEmbedder
+from shift_assistant.tools.schemas import OutreachDraft
 from tests.conftest import AssistantFactory, ai, make_settings, tool_call
 from tests.test_agent_workflow import ICU_POOL, REQUEST, SUBMIT, rec, research_steps, submission
 
@@ -69,9 +73,13 @@ def test_fallback_summary_uses_the_same_counts() -> None:
     assert_counts_match_lists(report)
 
 
-def test_summary_does_not_claim_full_coverage_when_the_pool_was_never_searched(
-    scripted_assistant: AssistantFactory,
+def test_summary_does_not_claim_full_coverage_when_the_pool_is_undetermined(
+    scripted_assistant: AssistantFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    def broken(*_: object) -> None:
+        raise RuntimeError("completion unavailable")
+
+    monkeypatch.setattr(DeterministicCompletion, "complete", broken)
     steps = [
         ai(tool_call("find_open_shifts", shift_id="SHF-1001")),
         ai(tool_call("evaluate_candidates", shift_id="SHF-1001", clinician_ids=["C-101", "C-102"])),
@@ -83,32 +91,39 @@ def test_summary_does_not_claim_full_coverage_when_the_pool_was_never_searched(
 
     report = assistant.run(REQUEST)
 
-    assert [i.code for i in report.issues] == ["POOL_NOT_SEARCHED"]
+    assert report.status is ReportStatus.NEEDS_REVIEW
+    assert [i.code for i in report.issues] == ["POOL_NOT_SEARCHED", "COMPLETION_UNRESOLVED"]
     assert "full" not in report.summary
     assert (
         "The shift's candidate pool was not searched, so coverage is unconfirmed." in report.summary
     )
     assert report.coverage is not None and not report.coverage.full_pool_evaluated
+    assert [r.clinician_id for r in report.recommendations] == ["C-101"]  # verified pick kept
 
 
-def test_summary_reports_unevaluated_pool_members(scripted_assistant: AssistantFactory) -> None:
+def test_summary_reports_pool_members_completion_could_not_vet(
+    scripted_assistant: AssistantFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def unavailable(self: object, clinician_id: str) -> None:
+        return None  # e.g. a record that disappeared between search and vetting
+
+    monkeypatch.setattr("shift_assistant.repository.StaffingRepository.clinician", unavailable)
     steps = [
         ai(tool_call("find_open_shifts", shift_id="SHF-1001")),
         ai(tool_call("search_clinicians", shift_id="SHF-1001", limit=3)),
-        ai(tool_call("evaluate_candidates", shift_id="SHF-1001", clinician_ids=["C-101"])),
     ]
-    final = submission(rec("C-101"))
     assistant, _ = scripted_assistant(
-        [*steps, ai(tool_call(SUBMIT, **final))], max_repair_attempts=0
+        [*steps, ai(tool_call(SUBMIT, **submission()))], max_repair_attempts=0
     )
 
     report = assistant.run(REQUEST)
 
-    assert "1 candidate evaluated, covering 1 of 9 in the shift's pool (8 not evaluated)" in (
+    assert "0 candidates evaluated, covering 0 of 9 in the shift's pool (9 not evaluated)" in (
         report.summary
     )
-    assert report.coverage is not None and len(report.coverage.unevaluated_ids) == 8
-    assert [i.code for i in report.issues] == ["INCOMPLETE_VETTING"]  # beyond the search limit
+    assert report.status is ReportStatus.NEEDS_REVIEW  # not no_eligible_candidates
+    assert report.coverage is not None and len(report.coverage.unevaluated_ids) == 9
+    assert {i.code for i in report.issues} == {"INCOMPLETE_VETTING", "COMPLETION_UNRESOLVED"}
 
 
 def test_summary_is_rebuilt_after_verification_removes_a_recommendation(
@@ -122,13 +137,14 @@ def test_summary_is_rebuilt_after_verification_removes_a_recommendation(
 
     report = assistant.run(REQUEST)
 
-    assert [r.clinician_id for r in report.recommendations] == ["C-101"]
-    assert report.status is ReportStatus.PARTIAL
+    assert [r.clinician_id for r in report.recommendations] == ["C-101", "C-107"]
+    assert report.status is ReportStatus.READY
     assert report.summary.endswith(
-        "1 eligible clinician shortlisted for 2 open positions; 1 position still without a "
-        "candidate; 2 eligible alternates were not shortlisted. "
-        "Requested shortlist: 1 of 2 clinicians; 1 fewer than requested. "
-        "Verification removed 1 recommendation that failed evidence checks."
+        "2 eligible clinicians shortlisted for 2 open positions; "
+        "1 eligible alternate was not shortlisted. "
+        "Requested shortlist: 2 of 2 clinicians. "
+        "Verification removed 1 recommendation that failed evidence checks. "
+        "After the model's answer, deterministic rules added 1 recommendation."
     )
     assert report.agent_notes is None  # described a shortlist that no longer exists
     assert_counts_match_lists(report)
@@ -175,9 +191,77 @@ def test_summary_wording(coverage: CandidateCoverage, positions: int, expected: 
     assert coverage_summary(coverage, positions) == expected
 
 
-def test_fill_status_distinguishes_no_shortlist_from_nobody_eligible() -> None:
-    assert fill_status(recommended=0, eligible=0, positions_open=2) is (
-        ReportStatus.NO_ELIGIBLE_CANDIDATES
+def _recommendations(count: int, drafted: bool = True) -> list[CandidateRecommendation]:
+    return [
+        CandidateRecommendation(
+            rank=i + 1,
+            clinician_id=f"C-{i}",
+            clinician_name=f"Clinician {i}",
+            selected_by=Origin.MODEL,
+            rationale="Passed the recorded compliance checks for this shift.",
+            outreach=OutreachDraft(
+                draft_id=f"D-{i}",
+                shift_id="S",
+                clinician_id=f"C-{i}",
+                personal_note="n",
+                subject="s",
+                body="b",
+            )
+            if drafted
+            else None,
+        )
+        for i in range(count)
+    ]
+
+
+def _coverage(
+    pool: int | None, eligible: int, recommended: int, unvetted: int = 0
+) -> CandidateCoverage:
+    evaluated = (pool or eligible) - unvetted
+    return CandidateCoverage(
+        pool_size=pool,
+        evaluated=evaluated,
+        eligible=eligible,
+        recommended=recommended,
+        alternates=eligible - recommended,
+        excluded=evaluated - eligible,
+        unevaluated_ids=[f"U-{i}" for i in range(unvetted)],
     )
-    assert fill_status(recommended=0, eligible=3, positions_open=2) is ReportStatus.PARTIAL
-    assert fill_status(recommended=2, eligible=3, positions_open=2) is ReportStatus.READY
+
+
+@pytest.mark.parametrize(
+    ("coverage", "recommended", "drafted", "outreach", "status"),
+    [
+        # Nothing is ruled out until the pool is determined and fully vetted.
+        (_coverage(None, 0, 0), 0, True, True, ReportStatus.NEEDS_REVIEW),
+        (_coverage(9, 0, 0, unvetted=8), 0, True, True, ReportStatus.NEEDS_REVIEW),
+        (_coverage(9, 1, 1, unvetted=8), 1, True, True, ReportStatus.NEEDS_REVIEW),
+        (_coverage(3, 0, 0), 0, True, True, ReportStatus.NO_ELIGIBLE_CANDIDATES),
+        # Requested outreach must exist for every recommendation.
+        (_coverage(9, 3, 2), 2, False, True, ReportStatus.NEEDS_REVIEW),
+        (_coverage(9, 3, 2), 2, False, False, ReportStatus.READY),
+        # Eligible clinicians left off a short shortlist is unfinished work, not a shortage.
+        (_coverage(9, 3, 1), 1, True, True, ReportStatus.NEEDS_REVIEW),
+        (_coverage(9, 1, 1), 1, True, True, ReportStatus.PARTIAL),
+        (_coverage(9, 3, 2), 2, True, True, ReportStatus.READY),
+    ],
+)
+def test_fill_status_completion_conditions(
+    coverage: CandidateCoverage,
+    recommended: int,
+    drafted: bool,
+    outreach: bool,
+    status: ReportStatus,
+) -> None:
+    request = StaffingRequest(text="Find two ICU nurses", draft_outreach=outreach)
+    recommendations = _recommendations(recommended, drafted)
+
+    assert fill_status(coverage, recommendations, request, 2, 5) is status
+
+
+def test_fill_status_treats_the_configured_limit_as_partial() -> None:
+    request = StaffingRequest(text="Find three ICU nurses", draft_outreach=False)
+
+    status = fill_status(_coverage(9, 3, 2), _recommendations(2, False), request, 1, 2)
+
+    assert status is ReportStatus.PARTIAL

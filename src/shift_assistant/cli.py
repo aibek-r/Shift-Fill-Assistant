@@ -38,6 +38,8 @@ def main(argv: list[str] | None = None) -> int:
         print("Embedding model unavailable: using keyword matching for search.", file=sys.stderr)
     report = assistant.run(request, on_event=lambda e: print(format_event(e), file=sys.stderr))
 
+    if report.status is ReportStatus.NEEDS_REVIEW:
+        print("Mandatory work is unresolved: review before contacting anyone.", file=sys.stderr)
     print(report.model_dump_json(indent=2) if args.json else render_markdown(report))
     if args.save:
         args.save.write_text(report.model_dump_json(indent=2), encoding="utf-8")

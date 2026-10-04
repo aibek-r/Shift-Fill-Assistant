@@ -16,6 +16,7 @@ from shift_assistant.config import Settings
 from shift_assistant.contracts import (
     CandidateRecommendation,
     IssueSeverity,
+    Origin,
     ReportStatus,
     RunMode,
     StaffingReport,
@@ -29,7 +30,7 @@ from shift_assistant.domain.eligibility import (
     Finding,
 )
 from shift_assistant.domain.models import COMPACT_JURISDICTION, CredentialType
-from shift_assistant.reliability.reporting import plural, shortlist_phrase
+from shift_assistant.reliability.reporting import completion_summary, plural, shortlist_phrase
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.retrieval.embedder import Embedder, create_embedder
 from shift_assistant.retrieval.knowledge import GLOBAL_SCOPE
@@ -81,6 +82,7 @@ PROGRESS_LABELS = {
     "evaluate_candidates": "checking compliance",
     "draft_outreach": "drafting outreach",
     "validation": "validating the answer",
+    "completion": "completing required checks",
     "verification": "verifying against evidence",
     "fallback": "running the rule-based fallback",
 }
@@ -93,12 +95,15 @@ STATUS_STYLE = {
         ":material/block:",
         "No eligible clinicians found",
     ),
+    ReportStatus.NEEDS_REVIEW: (st.warning, ":material/rule:", "Needs review"),
     ReportStatus.NEEDS_CLARIFICATION: (st.info, ":material/help:", "Needs clarification"),
     ReportStatus.FAILED: (st.error, ":material/error:", "Failed"),
 }
 
 STATUS_MESSAGES = {
     ReportStatus.NO_ELIGIBLE_CANDIDATES: "No clinician passed this shift's compliance checks.",
+    ReportStatus.NEEDS_REVIEW: "Required checks or drafts are incomplete. Verified results are "
+    "shown below; finish the open items before contacting anyone.",
     ReportStatus.NEEDS_CLARIFICATION: "The assistant needs more information before it can search.",
     ReportStatus.FAILED: "The request could not be completed.",
 }
@@ -118,6 +123,8 @@ MODE_LABELS = {
         "The AI workflow was unavailable, so deterministic rules alone built this report.",
     ),
 }
+ORIGIN_LABELS = {Origin.MODEL: "Selected by the AI agent", Origin.CODE: "Selected by rules"}
+CODE_DRAFT_NOTE = "Drafted by rules from the standard template."
 
 # Coordinator-facing wording for verification issues; the raw messages stay in Technical details.
 ISSUE_ACTIONS = {
@@ -131,6 +138,11 @@ ISSUE_ACTIONS = {
     "credential badges, not the rationale text.",
     "INVALID_DRAFT": "An outreach draft was removed because it could not be verified. Write that "
     "message manually.",
+    "MISSING_OUTREACH": "A requested outreach draft is missing. Write that message manually.",
+    "SHORTLIST_INCOMPLETE": "The shortlist is shorter than the eligible pool allows. Review the "
+    "alternates.",
+    "COMPLETION_UNRESOLVED": "A required check or draft could not be completed automatically. "
+    "Finish it manually.",
 }
 REMOVED_RECOMMENDATION = "A recommendation was removed because it failed evidence checks."
 INFORMATIONAL_ISSUES = {"FALLBACK_MODE"}  # already shown as the report mode
@@ -359,7 +371,11 @@ def render_report(
     render_action_items(report)
     st.markdown(f"**Summary:** {report.summary}")
     color, mode_icon, mode, explanation = MODE_LABELS[report.mode]
-    st.markdown(f"**Report mode:** {badge(color, mode_icon, mode)}", help=explanation)
+    mode_badges = badge(color, mode_icon, mode)
+    if report.completion is not None:
+        mode_badges += " " + badge("violet", "rule", "Completed by rules")
+        explanation += f" {completion_summary(report.completion)}"
+    st.markdown(f"**Report mode:** {mode_badges}", help=explanation)
     if report.coverage is None:
         # Nothing was evaluated (a clarifying question or a failed run), so zero counts and
         # empty candidate tabs would only suggest a search that never happened.
@@ -466,14 +482,6 @@ def use_facility(report: StaffingReport, facility_name: str) -> None:
 def status_message(report: StaffingReport) -> str:
     if report.status is ReportStatus.NEEDS_CLARIFICATION and report.clarification_question:
         return report.clarification_question
-    coverage = report.coverage
-    if report.status is ReportStatus.NO_ELIGIBLE_CANDIDATES and (
-        coverage is None or not coverage.full_pool_evaluated
-    ):
-        return (
-            "No evaluated candidate passed the compliance checks, but the shift's candidate pool "
-            "was not fully checked. Review before closing this shift."
-        )
     if report.status not in (ReportStatus.READY, ReportStatus.PARTIAL) or report.shift is None:
         return STATUS_MESSAGES.get(report.status, "")
     recommended, positions = len(report.recommendations), report.shift.positions_open
@@ -601,7 +609,10 @@ def render_recommendation(
             )
             with st.container(width="content", gap=None):
                 st.subheader(f"#{rec.rank} {rec.clinician_name}")
-                st.caption(f"{rec.clinician_id} · Recommended for review")
+                st.caption(
+                    f"{rec.clinician_id} · Recommended for review · "
+                    f"{ORIGIN_LABELS[rec.selected_by]}"
+                )
         if badges := credential_badges(rec.credentials):
             st.markdown(badges)
         for warning in rec.warnings:  # stays visible: it needs action before the shift
@@ -612,7 +623,7 @@ def render_recommendation(
                 st.caption(f"Citation ID: {citation.chunk_id}")
                 st.write(citation.text)
         if rec.outreach:
-            render_outreach(review, rec.outreach.draft_id, assistant)
+            render_outreach(review, rec.outreach.draft_id, assistant, rec.outreach_by)
 
 
 def source_title(citation: PolicyExcerpt) -> str:
@@ -647,7 +658,12 @@ def initials_avatar(name: str) -> str:
 # --- Outreach review ----------------------------------------------------------------------------
 
 
-def render_outreach(review: OutreachReview, draft_id: str, assistant: ShiftFillAssistant) -> None:
+def render_outreach(
+    review: OutreachReview,
+    draft_id: str,
+    assistant: ShiftFillAssistant,
+    origin: Origin | None = None,
+) -> None:
     """Read-only draft with a copy button; the coordinator edits the note and approves."""
     entry = review[draft_id]
     key = f"{review.run_id}-{draft_id}"  # widget state never leaks into another run or draft
@@ -659,6 +675,8 @@ def render_outreach(review: OutreachReview, draft_id: str, assistant: ShiftFillA
         icon=":material/check_circle:" if approved else ":material/mail:",
     ):
         st.markdown(f"**Subject:** {entry.draft.subject}")
+        if origin is Origin.CODE:
+            st.caption(CODE_DRAFT_NOTE)
         st.code(entry.draft.body, language=None, wrap_lines=True)
 
         if entry.status is DraftStatus.EDITING:

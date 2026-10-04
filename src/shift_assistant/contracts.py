@@ -36,16 +36,26 @@ class StaffingRequest(BaseModel):
 
 
 class ReportStatus(StrEnum):
-    READY = "ready"  # requested shortlist complete; nobody is booked
-    PARTIAL = "partial"  # fewer verified recommendations than requested
-    NO_ELIGIBLE_CANDIDATES = "no_eligible_candidates"
+    """Completion conditions live in `reliability.reporting.fill_status`."""
+
+    READY = "ready"  # requested shortlist and outreach complete, full pool vetted; nobody booked
+    PARTIAL = "partial"  # full pool vetted; fewer eligible (or allowed) clinicians than requested
+    NO_ELIGIBLE_CANDIDATES = "no_eligible_candidates"  # full pool vetted; nobody eligible
+    NEEDS_REVIEW = "needs_review"  # mandatory work unresolved; verified results are kept
     NEEDS_CLARIFICATION = "needs_clarification"
     FAILED = "failed"
 
 
 class RunMode(StrEnum):
-    AGENT = "agent"
+    AGENT = "agent"  # the model planned and ranked; code additions are marked with Origin.CODE
     FALLBACK = "fallback"  # deterministic pipeline used because the AI workflow failed
+
+
+class Origin(StrEnum):
+    """Who produced a recommendation or requested its outreach draft."""
+
+    MODEL = "model"  # chosen by the LLM, or drafted through its draft_outreach tool call
+    CODE = "code"  # added by deterministic completion or the rule-based fallback
 
 
 class IssueSeverity(StrEnum):
@@ -62,7 +72,7 @@ class VerificationIssue(BaseModel):
 
 class TraceEvent(BaseModel):
     step: int
-    kind: Literal["llm", "tool", "validation", "verification", "fallback"]
+    kind: Literal["llm", "tool", "validation", "completion", "verification", "fallback"]
     name: str
     ok: bool = True
     detail: str = ""
@@ -75,11 +85,13 @@ class CandidateRecommendation(BaseModel):
     rank: int
     clinician_id: str
     clinician_name: str
+    selected_by: Origin
     rationale: str
     warnings: list[Finding] = []
     credentials: list[CredentialCheck] = []
     citations: list[PolicyExcerpt] = []
     outreach: OutreachDraft | None = None
+    outreach_by: Origin | None = Field(default=None, description="Set whenever outreach is.")
 
 
 class ExcludedCandidate(BaseModel):
@@ -120,6 +132,31 @@ class CandidateCoverage(BaseModel):
         return self.pool_size is not None and not self.unevaluated_ids
 
 
+class CompletionRecord(BaseModel):
+    """Mandatory work that deterministic code finished after the model's answer (agent mode).
+
+    Unresolved work is not recorded here: it stays in `issues` and makes the status needs_review.
+    """
+
+    pool_determined_by_code: bool = Field(
+        default=False, description="search_clinicians was never called; code computed the pool."
+    )
+    evaluated_ids: list[str] = Field(default=[], description="Pool clinicians vetted by code.")
+    selected_ids: list[str] = Field(default=[], description="Recommendations appended by code.")
+    drafted_ids: list[str] = Field(
+        default=[], description="Clinicians whose outreach code drafted."
+    )
+
+    @property
+    def applied(self) -> bool:
+        return bool(
+            self.pool_determined_by_code
+            or self.evaluated_ids
+            or self.selected_ids
+            or self.drafted_ids
+        )
+
+
 class RunMetrics(BaseModel):
     llm_calls: int = 0
     tool_calls: int = 0
@@ -152,6 +189,9 @@ class StaffingReport(BaseModel):
     alternates: list[AlternateCandidate] = []
     excluded: list[ExcludedCandidate] = []
     coverage: CandidateCoverage | None = None
+    completion: CompletionRecord | None = Field(
+        default=None, description="Present when code completed work in agent mode."
+    )
     clarification_question: str | None = None
     issues: list[VerificationIssue] = []
     trace: list[TraceEvent] = []

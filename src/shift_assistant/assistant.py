@@ -22,6 +22,7 @@ from shift_assistant.contracts import (
     VerificationIssue,
 )
 from shift_assistant.domain.eligibility import EligibilityEngine
+from shift_assistant.reliability.completion import DeterministicCompletion
 from shift_assistant.reliability.fallback import DeterministicFallback
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.retrieval.embedder import Embedder, create_embedder
@@ -144,6 +145,7 @@ def build_assistant(
     deps = AgentDependencies(
         model=model,
         tools=tools,
+        completion=DeterministicCompletion(repository, toolkit, settings.max_recommendations),
         fallback=DeterministicFallback(repository, toolkit, settings.max_recommendations),
         settings=settings,
     )

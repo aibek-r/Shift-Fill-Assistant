@@ -13,6 +13,7 @@ from shift_assistant.contracts import (
     AlternateCandidate,
     CandidateCoverage,
     CandidateRecommendation,
+    CompletionRecord,
     ExcludedCandidate,
     ReportStatus,
     StaffingRequest,
@@ -22,12 +23,50 @@ from shift_assistant.tools.outreach import format_local_datetime, unit_label
 from shift_assistant.tools.schemas import CandidateEvaluation, ShiftSummary
 
 
-def fill_status(recommended: int, eligible: int, positions_open: int) -> ReportStatus:
-    if eligible == 0:
+def fill_status(
+    coverage: CandidateCoverage,
+    recommendations: Sequence[CandidateRecommendation],
+    request: StaffingRequest,
+    positions_open: int,
+    max_recommendations: int,
+) -> ReportStatus:
+    """Completion conditions shared by agent and fallback reports.
+
+    Nothing is ruled out until the shift's whole candidate pool is known and vetted, so
+    `no_eligible_candidates` and `partial` require full coverage. `ready` also needs the
+    requested shortlist and, when requested, a verified draft for every recommendation.
+    """
+    if not coverage.full_pool_evaluated:
+        return ReportStatus.NEEDS_REVIEW  # pool unknown or members unvetted
+    if coverage.eligible == 0:
         return ReportStatus.NO_ELIGIBLE_CANDIDATES
-    if recommended < positions_open:
-        return ReportStatus.PARTIAL
+    if missing_outreach(request, recommendations):
+        return ReportStatus.NEEDS_REVIEW
+    target = request.shortlist_target(positions_open)
+    if len(recommendations) < min(target, coverage.eligible, max_recommendations):
+        return ReportStatus.NEEDS_REVIEW  # eligible clinicians left off a short shortlist
+    if len(recommendations) < target:
+        return ReportStatus.PARTIAL  # a genuine shortage, or the configured limit
     return ReportStatus.READY
+
+
+def missing_outreach(
+    request: StaffingRequest, recommendations: Sequence[CandidateRecommendation]
+) -> int:
+    if not request.draft_outreach:
+        return 0
+    return sum(r.outreach is None for r in recommendations)
+
+
+def rule_ranked(evaluations: Iterable[CandidateEvaluation]) -> list[CandidateEvaluation]:
+    """Eligible clinicians in the fallback's order: fewest credential warnings, then experience.
+
+    The sort is stable, so ties keep the caller's (candidate pool) order.
+    """
+    return sorted(
+        (e for e in evaluations if e.eligible),
+        key=lambda e: (len(e.warnings), -(e.years_experience or 0)),
+    )
 
 
 def exclusions(evaluations: Iterable[CandidateEvaluation]) -> list[ExcludedCandidate]:
@@ -81,7 +120,10 @@ def candidate_coverage(
 
 
 def coverage_summary(
-    coverage: CandidateCoverage, positions_open: int, requested_count: int | None = None
+    coverage: CandidateCoverage,
+    positions_open: int,
+    requested_count: int | None = None,
+    missing_drafts: int = 0,
 ) -> str:
     sentences = [_vetting_sentence(coverage), _shortlist_sentence(coverage, positions_open)]
     if requested_count is not None:
@@ -90,10 +132,31 @@ def coverage_summary(
         if gap:
             target += f"; {gap} fewer than requested"
         sentences.append(target + ".")
+    if missing_drafts:
+        sentences.append(
+            f"Requested outreach is missing for {plural(missing_drafts, 'recommendation')}."
+        )
     if coverage.removed_by_verification:
         removed = plural(coverage.removed_by_verification, "recommendation")
         sentences.append(f"Verification removed {removed} that failed evidence checks.")
     return " ".join(sentences)
+
+
+def completion_summary(record: CompletionRecord) -> str:
+    """One sentence on the work code completed after the model's answer."""
+    parts = []
+    if record.pool_determined_by_code:
+        parts.append("determined the candidate pool")
+    if record.evaluated_ids:
+        parts.append(f"vetted {plural(len(record.evaluated_ids), 'remaining pool clinician')}")
+    if record.selected_ids:
+        parts.append(f"added {plural(len(record.selected_ids), 'recommendation')}")
+    if record.drafted_ids:
+        parts.append(f"drafted {plural(len(record.drafted_ids), 'template outreach message')}")
+    if not parts:
+        return ""
+    listed = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
+    return f"After the model's answer, deterministic rules {listed}."
 
 
 def clarification_summary(shifts: Sequence[ShiftSummary], question: str) -> str:

@@ -7,7 +7,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, ToolMessage
 
 from shift_assistant.assistant import build_assistant
-from shift_assistant.contracts import ReportStatus, RunMode, StaffingRequest
+from shift_assistant.contracts import Origin, ReportStatus, RunMode, StaffingRequest
 from shift_assistant.domain.eligibility import CheckCode
 from shift_assistant.retrieval.embedder import HashingEmbedder
 from tests.conftest import AssistantFactory, ai, make_settings, tool_call
@@ -148,15 +148,13 @@ def test_ungrounded_content_is_stripped_when_repairs_run_out(
     report = assistant.run(REQUEST)
 
     assert report.mode is RunMode.AGENT
-    assert [r.clinician_id for r in report.recommendations] == ["C-101"]
-    assert report.recommendations[0].citations == []
-    assert report.recommendations[0].outreach is None
-    assert {i.code for i in report.issues} == {
-        "NOT_VETTED",
-        "UNKNOWN_CITATION",
-        "INVALID_DRAFT",
-        "SHORTLIST_INCOMPLETE",
-    }
+    assert [r.clinician_id for r in report.recommendations] == ["C-101", "C-107"]
+    maria, grace = report.recommendations
+    assert maria.citations == [] and maria.outreach is None
+    # The removed pick's slot is refilled by rules, and the addition is labelled as such.
+    assert (maria.selected_by, grace.selected_by) == (Origin.MODEL, Origin.CODE)
+    assert {i.code for i in report.issues} == {"NOT_VETTED", "UNKNOWN_CITATION", "INVALID_DRAFT"}
+    assert report.status is ReportStatus.READY
 
 
 def test_unparseable_answer_falls_back_to_rules(scripted_assistant: AssistantFactory) -> None:
@@ -314,7 +312,7 @@ def test_partial_vetting_is_sent_back_until_the_pool_is_covered(
     assert report.issues == []
 
 
-def test_incomplete_vetting_is_flagged_when_repairs_run_out(
+def test_incomplete_vetting_is_completed_by_code_when_repairs_run_out(
     scripted_assistant: AssistantFactory,
 ) -> None:
     lazy = submission(rec("C-107"))
@@ -324,8 +322,11 @@ def test_incomplete_vetting_is_flagged_when_repairs_run_out(
 
     report = assistant.run(REQUEST)
 
-    assert [r.clinician_id for r in report.recommendations] == ["C-107"]
-    assert [(i.code, i.severity) for i in report.issues] == [("INCOMPLETE_VETTING", "warning")]
+    assert [r.clinician_id for r in report.recommendations] == ["C-107", "C-101"]
+    assert report.completion is not None
+    assert report.completion.evaluated_ids == [c for c in ICU_POOL if c != "C-107"]
+    assert report.issues == []  # repaired by completion, not left as an active warning
+    assert report.coverage is not None and report.coverage.full_pool_evaluated
 
 
 def vet_one_without_searching() -> list[AIMessage]:
@@ -362,7 +363,7 @@ def test_no_eligible_claim_after_partial_vetting_is_sent_back(
     assert report.coverage is not None and report.coverage.full_pool_evaluated
 
 
-def test_no_eligible_claim_is_qualified_when_repairs_run_out(
+def test_no_eligible_claim_after_partial_vetting_is_completed_by_code(
     scripted_assistant: AssistantFactory,
 ) -> None:
     assistant, _ = scripted_assistant(
@@ -372,10 +373,13 @@ def test_no_eligible_claim_is_qualified_when_repairs_run_out(
 
     report = assistant.run(REQUEST)
 
-    assert report.status is ReportStatus.NO_ELIGIBLE_CANDIDATES
-    assert "No evaluated candidate is eligible" in report.summary
-    assert "Nobody is eligible" not in report.summary
-    assert [i.code for i in report.issues] == ["POOL_NOT_SEARCHED"]
+    assert report.status is ReportStatus.READY  # three ICU nurses are eligible after all
+    assert [(r.clinician_id, r.selected_by) for r in report.recommendations] == [
+        ("C-101", Origin.CODE),
+        ("C-107", Origin.CODE),
+    ]
+    assert report.completion is not None and report.completion.pool_determined_by_code
+    assert report.issues == []
 
 
 def test_another_facilitys_policy_cannot_be_cited(scripted_assistant: AssistantFactory) -> None:
@@ -395,7 +399,7 @@ def test_another_facilitys_policy_cannot_be_cited(scripted_assistant: AssistantF
     report = assistant.run(REQUEST)
 
     assert report.recommendations[0].citations == []
-    assert [i.code for i in report.issues] == ["OTHER_FACILITY_CITATION", "SHORTLIST_INCOMPLETE"]
+    assert [i.code for i in report.issues] == ["OTHER_FACILITY_CITATION"]
 
 
 def test_rationale_must_mention_the_credential_warning(

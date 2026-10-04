@@ -11,6 +11,7 @@ from datetime import date
 from shift_assistant.contracts import (
     CandidateRecommendation,
     IssueSeverity,
+    Origin,
     ReportStatus,
     RunMode,
     StaffingReport,
@@ -26,6 +27,7 @@ from shift_assistant.reliability.reporting import (
     exclusions,
     fill_status,
     relative_date_clarification,
+    rule_ranked,
 )
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.tools.evidence import EvidenceLedger
@@ -87,17 +89,14 @@ class DeterministicFallback:
 
         clinicians = {c.id: c for c in self._repository.candidate_pool(shift)}
         evaluations = [self._toolkit.evaluate(shift, c) for c in clinicians.values()]
-        eligible = sorted(
-            (e for e in evaluations if e.eligible),
-            key=lambda e: (len(e.warnings), -clinicians[e.clinician_id].years_experience),
-        )
         target = request.shortlist_target(shift.positions_open)
-        shortlist = eligible[: min(target, self._max_recommendations)]
+        shortlist = rule_ranked(evaluations)[: min(target, self._max_recommendations)]
         recommendations = [
             CandidateRecommendation(
                 rank=rank,
                 clinician_id=e.clinician_id,
                 clinician_name=e.clinician_name,
+                selected_by=Origin.CODE,
                 rationale=candidate_rationale(e),
                 warnings=e.warnings,
                 credentials=e.credentials,
@@ -106,6 +105,7 @@ class DeterministicFallback:
                 )
                 if request.draft_outreach
                 else None,
+                outreach_by=Origin.CODE if request.draft_outreach else None,
             )
             for rank, e in enumerate(shortlist, start=1)
         ]
@@ -116,7 +116,9 @@ class DeterministicFallback:
         )
         return StaffingReport(
             request=request,
-            status=fill_status(len(recommendations), len(eligible), target),
+            status=fill_status(
+                coverage, recommendations, request, shift.positions_open, self._max_recommendations
+            ),
             mode=RunMode.FALLBACK,
             summary=(
                 f"{coverage_summary(coverage, shift.positions_open, request.requested_count)} "

@@ -2,17 +2,22 @@
 
 The model chooses candidates and their order. Candidate explanations are rendered from recorded
 facts; arbitrary model rationales and summary notes are never promoted to report evidence.
+Additions from deterministic completion arrive as ordinary submission entries and ledger
+evidence, so they pass the same checks; the completion record only labels their origin.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import date
 
 from shift_assistant.agent.submission import AgentSubmission, SubmissionStatus
 from shift_assistant.contracts import (
     CandidateRecommendation,
+    CompletionRecord,
     IssueSeverity,
+    Origin,
     ReportStatus,
     RunMode,
     StaffingReport,
@@ -28,9 +33,11 @@ from shift_assistant.reliability.reporting import (
     alternates,
     candidate_coverage,
     clarification_summary,
+    completion_summary,
     coverage_summary,
     exclusions,
     fill_status,
+    missing_outreach,
     relative_date_clarification,
 )
 from shift_assistant.tools.evidence import EvidenceLedger
@@ -43,7 +50,10 @@ def build_agent_report(
     ledger: EvidenceLedger,
     max_recommendations: int,
     today: date | None = None,
+    completion: CompletionRecord | None = None,
+    unresolved: Sequence[str] = (),
 ) -> StaffingReport:
+    record = completion or CompletionRecord()
     problems = check_grounding(submission, ledger, max_recommendations, request, today)
     if any(p.action is GroundingAction.REJECT_SUBMISSION for p in problems):
         return StaffingReport(
@@ -102,6 +112,7 @@ def build_agent_report(
                 rank=len(recommendations) + 1,
                 clinician_id=evaluation.clinician_id,
                 clinician_name=evaluation.clinician_name,
+                selected_by=_origin(rec.clinician_id, record.selected_ids),
                 rationale=candidate_rationale(evaluation),
                 warnings=evaluation.warnings,
                 credentials=evaluation.credentials,
@@ -111,6 +122,7 @@ def build_agent_report(
                     if c not in dropped_citations
                 ],
                 outreach=draft,
+                outreach_by=_origin(rec.clinician_id, record.drafted_ids) if draft else None,
             )
         )
 
@@ -124,13 +136,21 @@ def build_agent_report(
         ledger.candidate_pools.get(shift.shift_id),
         removed_by_verification=removed,
     )
+    summary = coverage_summary(
+        coverage,
+        shift.positions_open,
+        request.requested_count,
+        missing_outreach(request, recommendations),
+    )
+    if record.applied:
+        summary += f" {completion_summary(record)}"
     return StaffingReport(
         request=request,
         status=fill_status(
-            len(recommendations), coverage.eligible, request.shortlist_target(shift.positions_open)
+            coverage, recommendations, request, shift.positions_open, max_recommendations
         ),
         mode=RunMode.AGENT,
-        summary=coverage_summary(coverage, shift.positions_open, request.requested_count),
+        summary=summary,
         # Model prose may contain unsupported claims even when every reference is valid.
         agent_notes=None,
         shift=shift,
@@ -138,8 +158,21 @@ def build_agent_report(
         alternates=eligible_alternates,
         excluded=excluded,
         coverage=coverage,
-        issues=[_issue(p) for p in problems],
+        completion=record if record.applied else None,
+        issues=[
+            *(_issue(p) for p in problems),
+            *(
+                VerificationIssue(
+                    severity=IssueSeverity.WARNING, code="COMPLETION_UNRESOLVED", message=message
+                )
+                for message in unresolved
+            ),
+        ],
     )
+
+
+def _origin(clinician_id: str, added_by_code: Sequence[str]) -> Origin:
+    return Origin.CODE if clinician_id in added_by_code else Origin.MODEL
 
 
 def _issue(problem: GroundingProblem) -> VerificationIssue:

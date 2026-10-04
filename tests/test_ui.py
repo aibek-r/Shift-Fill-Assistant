@@ -12,8 +12,11 @@ from streamlit.testing.v1 import AppTest
 
 from shift_assistant.config import PROJECT_ROOT
 from shift_assistant.contracts import StaffingRequest
+from shift_assistant.domain.models import Clinician, Shift
 from shift_assistant.retrieval.embedder import HashingEmbedder
 from shift_assistant.review import DraftStatus
+from shift_assistant.tools.schemas import CandidateEvaluation
+from shift_assistant.tools.toolkit import StaffingToolkit
 from tests.conftest import ScriptedModel, ai, tool_call
 
 
@@ -135,6 +138,55 @@ def test_facility_choice_preserves_dates_count_and_outreach_intent(
     assert "report" not in app.session_state and "review" not in app.session_state
     assert app.selectbox[0].value is None
     assert len(model.received) == 2  # Choosing a facility prepares the form without a model call.
+
+
+def test_needs_review_and_code_additions_are_labelled(
+    app: AppTest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model = ScriptedModel(
+        [
+            ai(tool_call("find_open_shifts", shift_id="SHF-1001")),
+            ai(tool_call("search_clinicians", shift_id="SHF-1001")),
+            ai(tool_call("evaluate_candidates", shift_id="SHF-1001", clinician_ids=["C-107"])),
+            ai(
+                tool_call(
+                    "submit_recommendation",
+                    status="completed",
+                    shift_id="SHF-1001",
+                    recommendations=[
+                        {"clinician_id": "C-107", "rationale": "Eligible per the evaluation."}
+                    ],
+                    summary="Grace Liu fits the ICU night shift.",
+                )
+            ),
+        ]
+    )
+    original = StaffingToolkit.evaluate
+
+    def evaluate(self: StaffingToolkit, shift: Shift, clinician: Clinician) -> CandidateEvaluation:
+        if clinician.id == "C-103":
+            raise RuntimeError("check unavailable")
+        return original(self, shift, clinician)
+
+    monkeypatch.setattr(StaffingToolkit, "evaluate", evaluate)
+    monkeypatch.setenv("MAX_REPAIR_ATTEMPTS", "0")
+    monkeypatch.setattr(
+        "shift_assistant.assistant.build_chat_model", lambda *args: RunnableLambda(model)
+    )
+    st.cache_resource.clear()
+    app.text_area(key="request_text").set_value(
+        "Find two ICU nurses for St. Mary's on Oct 14 and draft outreach"
+    )
+    click(app, "Run assistant")
+
+    report = app.session_state["report"]
+    assert report.status == "needs_review"
+    assert any(w.value.startswith("**Needs review:**") for w in app.warning)
+    captions = [c.value for c in app.caption]
+    assert any(c.endswith("Selected by the AI agent") for c in captions)
+    assert any(c.endswith("Selected by rules") for c in captions)
+    assert "Drafted by rules from the standard template." in captions
+    assert any("Completed by rules" in m.value for m in app.markdown)
 
 
 def test_example_choice_clears_a_conflicting_pin(app: AppTest) -> None:

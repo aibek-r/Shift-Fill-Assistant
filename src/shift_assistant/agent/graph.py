@@ -1,12 +1,13 @@
 """The agent workflow as a LangGraph state machine.
 
-    START -> agent --(tool calls)--> tools -> agent ...           (ReAct loop)
-               |--(submit)--------> validate --(ok)----------> verify -> END
-               |                       |--(fixable)-> agent             (self-repair)
+    START -> agent --(tool calls)--> tools -> agent ...                      (ReAct loop)
+               |--(submit)--------> validate --(ok or repairs used up)--> complete -> verify -> END
+               |                       |--(fixable)-> agent                        (self-repair)
                |--(failure)-------> fallback -> END   <--(unrecoverable)--|
 
 Budgets (LLM calls, wall-clock time, repair attempts) bound the loop; any LLM failure degrades
-to the deterministic fallback instead of an error page.
+to the deterministic fallback instead of an error page. `complete` finishes mandatory work the
+model left undone (vetting, shortlist size, requested drafts) with deterministic rules.
 """
 
 from __future__ import annotations
@@ -24,11 +25,13 @@ from pydantic import ValidationError
 
 from shift_assistant.agent.llm import ToolCallingModel
 from shift_assistant.agent.state import AgentState
-from shift_assistant.agent.submission import SUBMIT_TOOL_NAME, AgentSubmission
+from shift_assistant.agent.submission import SUBMIT_TOOL_NAME, AgentSubmission, SubmissionStatus
 from shift_assistant.config import Settings
 from shift_assistant.contracts import TraceEvent
+from shift_assistant.reliability.completion import DeterministicCompletion
 from shift_assistant.reliability.fallback import DeterministicFallback
 from shift_assistant.reliability.grounding import GroundingAction, check_grounding
+from shift_assistant.reliability.reporting import completion_summary
 from shift_assistant.reliability.verifier import build_agent_report
 from shift_assistant.tools.registry import ToolRegistry, describe_validation_error
 
@@ -41,6 +44,7 @@ Update = dict[str, Any]
 class AgentDependencies:
     model: ToolCallingModel | None
     tools: ToolRegistry
+    completion: DeterministicCompletion
     fallback: DeterministicFallback
     settings: Settings
 
@@ -51,6 +55,7 @@ def build_agent_graph(deps: AgentDependencies) -> CompiledStateGraph[AgentState]
     graph.add_node("agent", nodes.agent)
     graph.add_node("tools", nodes.tools)
     graph.add_node("validate", nodes.validate)
+    graph.add_node("complete", nodes.complete)
     graph.add_node("verify", nodes.verify)
     graph.add_node("fallback", nodes.fallback)
 
@@ -58,8 +63,9 @@ def build_agent_graph(deps: AgentDependencies) -> CompiledStateGraph[AgentState]
     graph.add_conditional_edges("agent", nodes.route_after_agent, ["tools", "validate", "fallback"])
     graph.add_edge("tools", "agent")
     graph.add_conditional_edges(
-        "validate", nodes.route_after_validate, ["agent", "verify", "fallback"]
+        "validate", nodes.route_after_validate, ["agent", "complete", "fallback"]
     )
+    graph.add_edge("complete", "verify")
     graph.add_edge("verify", END)
     graph.add_edge("fallback", END)
     return graph.compile()
@@ -213,6 +219,43 @@ class _Nodes:
             update["failure"] = f"no valid answer after {attempts} submission attempts"
         return update
 
+    def complete(self, state: AgentState) -> Update:
+        submission = state["submission"]
+        assert submission is not None, "routing guarantees a parsed submission"
+        if submission.status is not SubmissionStatus.COMPLETED:
+            return {}  # a clarification has no mandatory staffing work
+        started = time.perf_counter()
+        try:
+            done = self._deps.completion.complete(state["request"], submission, state["ledger"])
+        except Exception as exc:  # leave the work unresolved; the verifier still reports
+            logger.warning("Deterministic completion failed (%s)", type(exc).__name__)
+            unresolved = [f"Deterministic completion failed ({type(exc).__name__})."]
+            event = _event(
+                len(state["trace"]) + 1,
+                "completion",
+                "rules",
+                started,
+                ok=False,
+                detail=unresolved[0],
+            )
+            return {"unresolved": unresolved, "trace": [event]}
+        detail = completion_summary(done.record) or "Nothing to complete."
+        event = _event(
+            len(state["trace"]) + 1,
+            "completion",
+            "rules",
+            started,
+            ok=not done.unresolved,
+            detail=" ".join([detail, *done.unresolved])[:500],
+        )
+        return {
+            "submission": done.submission,
+            "ledger": done.ledger,
+            "completion": done.record,
+            "unresolved": done.unresolved,
+            "trace": [event],
+        }
+
     def verify(self, state: AgentState) -> Update:
         started = time.perf_counter()
         submission = state["submission"]
@@ -223,6 +266,8 @@ class _Nodes:
             state["ledger"],
             self._settings.max_recommendations,
             self._settings.today,
+            state["completion"],
+            state["unresolved"],
         )
         detail = (
             f"{len(report.recommendations)} recommendation(s) verified; "
@@ -253,13 +298,13 @@ class _Nodes:
             return "tools"
         return "validate"  # a lone submission, or no tool call at all (validate will nudge)
 
-    def route_after_validate(self, state: AgentState) -> Literal["agent", "verify", "fallback"]:
+    def route_after_validate(self, state: AgentState) -> Literal["agent", "complete", "fallback"]:
         if state["failure"]:
-            return "fallback"
+            return "fallback"  # includes a rejected submission once repairs are used up
         if not state["validation_errors"]:
-            return "verify"
+            return "complete"
         if state["repair_attempts"] > self._settings.max_repair_attempts:
-            return "verify"  # out of repairs but usable: the verifier strips what is ungrounded
+            return "complete"  # usable: completion fills gaps, the verifier strips the ungrounded
         return "agent"
 
 
@@ -293,7 +338,7 @@ def _compact(args: dict[str, Any], limit: int = 200) -> str:
 
 def _event(
     step: int,
-    kind: Literal["llm", "tool", "validation", "verification", "fallback"],
+    kind: Literal["llm", "tool", "validation", "completion", "verification", "fallback"],
     name: str,
     started: float,
     *,

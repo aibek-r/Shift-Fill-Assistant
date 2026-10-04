@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
-from shift_assistant.contracts import StaffingReport, TraceEvent
+from shift_assistant.contracts import Origin, StaffingReport, TraceEvent
+from shift_assistant.reliability.reporting import completion_summary
 from shift_assistant.tools.outreach import format_local_datetime, unit_label
 from shift_assistant.tools.schemas import ShiftSummary
+
+SELECTED_BY = {Origin.MODEL: "AI agent", Origin.CODE: "deterministic rules"}
+DRAFTED_BY = {
+    Origin.MODEL: "requested by the AI agent",
+    Origin.CODE: "drafted by deterministic rules",
+}
 
 
 def format_event(event: TraceEvent) -> str:
@@ -24,11 +31,12 @@ def describe_shift(shift: ShiftSummary) -> str:
 
 
 def render_markdown(report: StaffingReport) -> str:
+    completed = " with deterministic completion" if report.completion else ""
     lines = [
         "# Staffing report",
         "",
         f"- **Request:** {report.request.text}",
-        f"- **Status:** `{report.status}` (mode: `{report.mode}`)",
+        f"- **Status:** `{report.status}` (mode: `{report.mode}`{completed})",
     ]
     if report.shift:
         lines.append(f"- **Shift:** {describe_shift(report.shift)}")
@@ -46,13 +54,16 @@ def render_markdown(report: StaffingReport) -> str:
             f"### {rec.rank}. {rec.clinician_name} ({rec.clinician_id})",
             "",
             rec.rationale,
+            "",
+            f"- **Selected by:** {SELECTED_BY[rec.selected_by]}",
         ]
         lines += [f"- **Warning:** {w.message}" for w in rec.warnings]
         lines += [f"- **Source:** `{c.chunk_id}` ({c.section})" for c in rec.citations]
         if rec.outreach:
+            drafted = f" ({DRAFTED_BY[rec.outreach_by]})" if rec.outreach_by else ""
             lines += [
                 "",
-                f"<details><summary>Outreach draft: {rec.outreach.subject}</summary>",
+                f"<details><summary>Outreach draft{drafted}: {rec.outreach.subject}</summary>",
                 "",
                 "```text",
                 rec.outreach.body,
@@ -75,6 +86,19 @@ def render_markdown(report: StaffingReport) -> str:
             f"{'; '.join(f'`{r.code}` {r.message}' for r in e.reasons)} |"
             for e in report.excluded
         ]
+
+    if report.completion:
+        record = report.completion
+        lines += ["", "## Deterministic completion", "", completion_summary(record), ""]
+        if record.pool_determined_by_code:
+            lines.append("- Candidate pool: computed by code (search_clinicians was not called)")
+        for label, ids in (
+            ("Vetted by code", record.evaluated_ids),
+            ("Recommendations added by code", record.selected_ids),
+            ("Outreach drafted by code", record.drafted_ids),
+        ):
+            if ids:
+                lines.append(f"- {label}: {', '.join(ids)}")
 
     lines += ["", "## Verification", ""]
     if report.issues:
