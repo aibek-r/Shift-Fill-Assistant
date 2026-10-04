@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -67,6 +68,10 @@ class Settings(BaseSettings):
     @property
     def today(self) -> date:
         return self.reference_date or date.today()
+
+    def today_in(self, timezone: str) -> date:
+        """'Today' at a facility: the pinned reference date, else the facility's local date."""
+        return self.reference_date or datetime.now(ZoneInfo(timezone)).date()
 
     @property
     def llm_enabled(self) -> bool:

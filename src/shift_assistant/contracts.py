@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import date
 from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from shift_assistant.domain.eligibility import CredentialCheck, Finding
+from shift_assistant.domain.models import Unit
 from shift_assistant.intent import requested_count, wants_outreach
 from shift_assistant.tools.schemas import OutreachDraft, PolicyExcerpt, ShiftSummary
 
@@ -21,6 +23,10 @@ class StaffingRequest(BaseModel):
     )
     requested_count: int | None = Field(default=None, ge=1, le=100)
     draft_outreach: bool = True
+    # Explicit shift details for API callers; each overrides conflicting request text.
+    facility: str | None = Field(default=None, max_length=200, description="Facility name or ID.")
+    unit: Unit | None = None
+    start_date: date | None = Field(default=None, description="Facility-local shift start date.")
 
     @model_validator(mode="before")
     @classmethod

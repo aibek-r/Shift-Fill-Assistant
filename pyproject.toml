@@ -19,6 +19,7 @@ dependencies = [
     "numpy>=2.0,<3",
     "fastembed>=0.8,<1",
     "streamlit>=1.64,<2",
+    "tzdata>=2024.1",  # IANA time zones for facility-local dates (Windows has no system copy)
 ]
 
 [project.optional-dependencies]

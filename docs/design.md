@@ -102,3 +102,42 @@ its output, not about wall-clock time inside one call.
 thrown away in favor of the rules-only fallback. Keeping it would make the budget meaningless
 under load, and the fallback is compliant (same engine, same templates), only less nuanced in
 its ranking. The cost is that a slow but correct model answer is wasted.
+
+## Fallback shift resolution
+
+When the fallback runs without a pinned shift (no API key, or the agent failed),
+`reliability/resolution.py` resolves the shift with rules, in this order:
+
+1. A pinned shift (`shift_id`) always wins.
+2. Explicit typed request fields: `facility`, `unit` and `start_date`. Each overrides
+   conflicting request text. An unknown typed facility asks which facility to use.
+3. Conservative parsing of the request text:
+   - **Facility:** a facility ID, or a distinctive whole word of a facility name ("Mary's",
+     "Lakeside", "Bayview"). Prefixes and generic words such as "hospital" never count.
+   - **Unit:** a short synonym list: `ICU`/"intensive care", `PICU`/"pediatric ICU" or
+     "pediatric intensive care", `NICU`/"neonatal ICU" or "neonatal intensive care",
+     `ED`/`ER`/"emergency (department|room)" (uppercase `ED`/`ER` only, so the name "Ed" does
+     not count), "tele"/"telemetry", "med-surg"/"medical-surgical". "Critical care" is ambiguous
+     between adult and pediatric units and is not mapped.
+   - **Period:** "day shift" or "night shift", only when exactly one appears.
+   - **Dates:** today, tomorrow, this week and next week (Monday-Sunday weeks), plus explicit
+     dates such as "Oct 14", "October 14th", "14 October", "10/14", "10/14/2026" and
+     "2026-10-14". "May" must be capitalized, so the verb is not read as a month, and pairs such
+     as "24/7" are not dates. Several dates or units are alternatives: a shift matching any of
+     them qualifies.
+4. If exactly one shift matches, it is staffed and the summary says what it was matched on. If
+   the agent had narrowed the request to one of several matches before it failed, that shift is
+   used. If several match, the report asks which one, listing them. If none match, the report
+   says which details did not match, lists alternatives that differ only in date or period, and
+   lists the known facilities when none was named. Missing details are never filled in.
+
+**Dates are facility-local shift start dates**, as in `find_open_shifts`. Relative dates use the
+facility's own "today": the pinned `REFERENCE_DATE` when set, otherwise the current date in the
+facility's time zone. The facility is resolved before relative dates are applied.
+
+**Yearless dates** take the reference year. If that date has already passed, the report asks
+for the date instead of moving it to next year: "Oct 14" on October 20 is a question, not a
+request for October 2027. Impossible dates ("Oct 32", "2/31") are asked about as well.
+
+The agent path still uses the server's date (or `REFERENCE_DATE`) for its prompt and for the
+`REQUESTED_DATE_MISMATCH` check; with the pinned reference date the two paths agree.

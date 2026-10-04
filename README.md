@@ -132,9 +132,11 @@ plans the workflow and ranks eligible clinicians**.
   (`MAX_RUN_SECONDS`). Answers that arrive after the deadline are discarded. If the LLM still
   fails, is missing, or exceeds `MAX_AGENT_STEPS` or the budget, the graph routes to a
   **deterministic fallback**. It uses the same engine
-  and templates and labels the report `mode: fallback`. It uses the selected shift, else the one
-  shift the agent was working on. It uses the requested shortlist size, or open positions when
-  unspecified, and honors requests without outreach. The UI can simulate an outage to show this.
+  and templates and labels the report `mode: fallback`. Without a selected shift it resolves the
+  facility, unit and date from typed request fields or conservative text parsing, and asks when
+  several shifts or none match (see [docs/design.md](docs/design.md)). It uses the requested
+  shortlist size, or open positions when unspecified, and honors requests without outreach. The
+  UI can simulate an outage to show this.
 - **Degraded retrieval is visible.** If the embedding model cannot load, keyword matching takes
   over with a relevance cut-off suited to it, and the UI and CLI show a warning. Missing or empty
   facility/global policy documents add a visible `POLICY_CONTEXT_MISSING` report issue in both

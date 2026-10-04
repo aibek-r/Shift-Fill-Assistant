@@ -186,10 +186,13 @@ def test_step_budget_stops_a_looping_agent(scripted_assistant: AssistantFactory)
     loop = [ai(tool_call("find_open_shifts", facility="St. Mary's", unit="ICU")) for _ in range(3)]
     assistant, model = scripted_assistant(loop, max_agent_steps=2)
 
-    report = assistant.run(REQUEST)
+    report = assistant.run(StaffingRequest(text="An ICU nurse for St. Mary's, please."))
 
     assert len(model.received) == 2
-    assert (report.mode, report.status) == (RunMode.FALLBACK, ReportStatus.FAILED)  # 2 shifts
+    # Two St. Mary's ICU shifts match, so the rules ask instead of picking one.
+    assert (report.mode, report.status) == (RunMode.FALLBACK, ReportStatus.NEEDS_CLARIFICATION)
+    assert "SHF-1001" in (report.clarification_question or "")
+    assert "SHF-1003" in (report.clarification_question or "")
     assert "step budget" in report.issues[0].message
 
 

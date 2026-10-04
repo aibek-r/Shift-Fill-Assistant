@@ -306,7 +306,7 @@ class _Nodes:
         started = time.perf_counter()
         reason = state["failure"] or "unknown failure"
         report = self._deps.fallback.build_report(
-            state["request"], state["ledger"], reason, self._settings.today
+            state["request"], state["ledger"], reason, self._settings.today_in
         )
         event = _event(len(state["trace"]) + 1, "fallback", "rules", started, detail=reason)
         return {"report": report, "trace": [event]}

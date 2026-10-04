@@ -86,6 +86,23 @@ class StaffingRepository:
             )
         ]
 
+    def facilities_mentioned(self, text: str) -> list[Facility]:
+        """Facilities named in free text, by ID or by a distinctive whole word of the name.
+
+        Stricter than find_facilities: free text is full of short words, so prefixes
+        ("me" for "Medical") and generic words ("hospital") never count.
+        """
+        words = set(_tokens(text))
+        return [
+            facility
+            for facility in self._facilities.values()
+            if facility.id in text.upper()
+            or any(
+                len(token) >= 4 and token in words
+                for token in set(_tokens(facility.name)) - _GENERIC_NAME_TOKENS
+            )
+        ]
+
     def candidate_pool(self, shift: Shift) -> list[Clinician]:
         """Clinicians whose role and specialty fit the shift. Compliance is checked separately."""
         return [

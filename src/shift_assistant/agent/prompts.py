@@ -70,6 +70,19 @@ def build_initial_messages(
             "The pin overrides conflicting shift text. Once the pinned shift is resolved, "
             "complete its shortlist without asking to switch shifts."
         )
+    explicit = [
+        f"{label}: {value}"
+        for label, value in (
+            ("facility", request.facility),
+            ("unit", request.unit),
+            ("facility-local start date", request.start_date),
+        )
+        if value is not None
+    ]
+    if explicit and not request.shift_id:
+        user_turn += (
+            f"\nExplicit shift details ({'; '.join(explicit)}) override conflicting request text."
+        )
     if request.requested_count is not None:
         user_turn += (
             f"\nRequired shortlist size: {request.requested_count} "

@@ -29,3 +29,11 @@ def test_clarifications_must_state_dates_accurately() -> None:
     assert "Today is 2026-10-02." in system
     assert "say plainly when none falls on the requested dates" in system
     assert "never describe a shift as matching dates it does not" in system
+
+
+def test_explicit_shift_fields_are_given_to_the_model() -> None:
+    request = StaffingRequest(text="ICU nurse at St. Mary's", unit="PICU", facility="Bayview")
+    user_turn = str(build_initial_messages(request, date(2026, 10, 2), 5)[1].content)
+
+    assert "Explicit shift details (facility: Bayview; unit: PICU)" in user_turn
+    assert "override conflicting request text" in user_turn

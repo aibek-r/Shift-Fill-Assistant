@@ -6,8 +6,6 @@ compliant (if less nuanced) shortlist when the LLM is down, misconfigured or mis
 
 from __future__ import annotations
 
-from datetime import date
-
 from shift_assistant.contracts import (
     CandidateRecommendation,
     IssueSeverity,
@@ -18,17 +16,15 @@ from shift_assistant.contracts import (
     StaffingRequest,
     VerificationIssue,
 )
-from shift_assistant.domain.models import Shift
-from shift_assistant.intent import relative_date_window
 from shift_assistant.reliability.reporting import (
     alternates,
     candidate_coverage,
     coverage_summary,
     exclusions,
     fill_status,
-    relative_date_clarification,
     rule_ranked,
 )
+from shift_assistant.reliability.resolution import TodayIn, resolve_shift
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.tools.evidence import EvidenceLedger
 from shift_assistant.tools.facts import DEFAULT_NOTE, candidate_rationale
@@ -50,40 +46,33 @@ class DeterministicFallback:
         request: StaffingRequest,
         ledger: EvidenceLedger,
         reason: str,
-        today: date | None = None,
+        today_in: TodayIn,
     ) -> StaffingReport:
         issue = VerificationIssue(
             severity=IssueSeverity.WARNING,
             code="FALLBACK_MODE",
             message=f"AI workflow unavailable ({reason}). Results use deterministic rules only.",
         )
-        shift = self._resolve_shift(request, ledger)
-        if shift is None:
-            return StaffingReport(
-                request=request,
-                status=ReportStatus.FAILED,
-                mode=RunMode.FALLBACK,
-                summary=(
-                    "The AI workflow could not finish and no single shift could be identified. "
-                    "Select a specific shift and try again."
-                ),
-                issues=[issue],
-            )
-
-        window = relative_date_window(request.text, today) if today is not None else None
-        if not request.shift_id and window is not None and not window.contains(shift.start.date()):
-            assert today is not None
-            clarification = relative_date_clarification(
-                request, [self._toolkit.summarize(shift)], today
-            )
-            assert clarification is not None
-            summary, question = clarification
+        resolution = resolve_shift(
+            request, self._repository, self._toolkit.summarize, ledger, today_in
+        )
+        if resolution.clarification is not None:
+            summary, question = resolution.clarification
             return StaffingReport(
                 request=request,
                 status=ReportStatus.NEEDS_CLARIFICATION,
                 mode=RunMode.FALLBACK,
                 summary=summary,
                 clarification_question=question,
+                issues=[issue],
+            )
+        shift = resolution.shift
+        if shift is None:
+            return StaffingReport(
+                request=request,
+                status=ReportStatus.FAILED,
+                mode=RunMode.FALLBACK,
+                summary=f"The selected shift {request.shift_id} does not exist.",
                 issues=[issue],
             )
 
@@ -120,9 +109,12 @@ class DeterministicFallback:
                 coverage, recommendations, request, shift.positions_open, self._max_recommendations
             ),
             mode=RunMode.FALLBACK,
-            summary=(
-                f"{coverage_summary(coverage, shift.positions_open, request.requested_count)} "
-                "Ranked by credential warnings, then experience."
+            summary=" ".join(
+                [
+                    *_resolution_note(shift.id, resolution.method, resolution.criteria),
+                    coverage_summary(coverage, shift.positions_open, request.requested_count),
+                    "Ranked by credential warnings, then experience.",
+                ]
             ),
             shift=self._toolkit.summarize(shift),
             recommendations=recommendations,
@@ -148,18 +140,11 @@ class DeterministicFallback:
             ],
         )
 
-    def _resolve_shift(self, request: StaffingRequest, ledger: EvidenceLedger) -> Shift | None:
-        """Use the selected shift, else the one the agent worked on, else the one it found.
 
-        "Worked on" means it searched or vetted candidates for a shift that find_open_shifts
-        returned, which survives the agent first finding several shifts and then narrowing down.
-        """
-        if request.shift_id:
-            return self._repository.shift(request.shift_id)
-        worked_on = {e.shift_id for e in ledger.evaluations.values()} | set(
-            ledger.searched_candidates
-        )
-        candidates = (worked_on & set(ledger.shifts)) or set(ledger.shifts)
-        if len(candidates) == 1:
-            return self._repository.shift(next(iter(candidates)))
-        return None
+def _resolution_note(shift_id: str, method: str, criteria: str) -> list[str]:
+    if method == "request":
+        matched = f" ({criteria})" if criteria else ""
+        return [f"{shift_id} was matched to the request by rules{matched}."]
+    if method == "agent":
+        return [f"{shift_id} is the shift the AI workflow was working on before it stopped."]
+    return []
