@@ -1,33 +1,67 @@
-# Demo video script (about 4 minutes)
+# Demo guide (about 5 minutes)
 
-Start the app first with `streamlit run app/streamlit_app.py`. Leave "Select a shift" on
-"Let the agent find it".
+Start the app with `streamlit run app/streamlit_app.py` and leave "Select a shift" on "Let the
+agent find it". Agent mode needs your own `OPENAI_API_KEY` in `.env`. Without one, every step
+below still runs in rule-based fallback mode, and the report says so.
 
-1. **Problem and approach (30 seconds).** "Coordinators fill open shifts by hand. They check
-   licenses, certifications, schedules and facility preferences, then write outreach. I built one
-   capability, a Shift Fill Assistant. The LLM plans, ranks and writes. Plain code makes every
-   compliance decision. Every clinician, policy and draft it references is checked against tool
-   evidence before anyone sees it."
-2. **Happy path (90 seconds).** Click the **ICU night shift** example, then **Run assistant**.
-   - Narrate the progress label as it changes. Then open **Technical details**, then **Trace**.
-     The agent resolved the shift, requested the policy and clinician searches in one turn (they
-     run one after another), vetted the whole pool, drafted outreach, then submitted.
-   - Open **Recommendations**. Point at the citation expander, which shows the real policy text,
-     and the outreach draft. The logistics and the reply deadline come from the record, not the
-     model.
-   - Open **Excluded**. There are six reason codes: an expired ACLS, a California license in
-     Texas, a double booking, too little rest, too little experience, and an inactive profile.
-   - Open **Alternates**. Daniel Kim qualifies but has an expiring ACLS. Code computes this
-     list, so nobody gets lost silently.
-3. **Clarification (30 seconds).** Run **Ambiguous request**. The agent asks which shift instead
-   of guessing.
-4. **Reliability (60 seconds).**
-   - Open **Demo controls** in the sidebar, turn on **Simulate LLM outage** and select shift
-     **SHF-1001**, then rerun the ICU example. The report mode reads **Rule-based fallback**, and
-     the same engine still produces a compliant shortlist. Without a selected shift, the
-     fallback cannot tell which shift was meant, so it reports that it could not complete.
-   - Show the test names in `tests/test_agent_workflow.py`. They cover a hallucinated candidate
-     sent back for repair, ungrounded citations stripped, and incomplete vetting caught.
-5. **Close (20 seconds).** Walk through the architecture diagram in the README and the next
-   steps: an evaluation harness, pgvector, persisted audit and tracing, and real delivery
-   for approved drafts.
+**Opening line.** "The model plans, calls tools and ranks. Code decides eligibility, checks every
+reference against tool evidence, finishes any mandatory work the model skipped, and labels what
+it added."
+
+## 1. A successful, completed request (90 seconds)
+
+Click the **ICU night shift** example, then **Run assistant**.
+
+- The status reads **Shortlist ready**. Open **Technical details → Trace**: the agent resolved
+  the shift, searched policies and clinicians, vetted the whole pool, drafted outreach and
+  submitted. Then `validation`, `completion` ("Nothing to complete." when the model did
+  everything) and `verification` ran.
+- Under **Recommendations**, each card says **Selected by the AI agent** or **Selected by
+  rules**. Open a citation to show the retrieved policy text, then the outreach draft: shift
+  logistics, credential reminders and a matching shift preference come from the record, never
+  from profile free text.
+- **Excluded** lists six reason codes from the eligibility engine. **Alternates** shows the
+  eligible clinician who was not shortlisted, computed by code.
+- Edit a note and show that editing withdraws an approval. Nothing is sent: delivery is
+  simulated.
+
+## 2. An ambiguous request (30 seconds)
+
+Run **Ambiguous request** ("an ICU nurse for St. Mary's next week"). Next week (Oct 5-11 with
+the pinned reference date) has no St. Mary's ICU shift. The report asks instead of guessing and
+lists the Oct 14 and Oct 16 shifts as alternatives with exact dates. The rule-based path asks
+the same way.
+
+## 3. Model failure or exhausted budget, with safe recovery (60 seconds)
+
+- Open **Demo controls**, turn on **Simulate LLM outage**, and rerun the ICU example with no
+  shift selected. The mode reads **Rule-based fallback**. The rules match SHF-1001 from the
+  request (facility, unit, night shift, date) and say so in the summary. The same eligibility
+  engine and templates produce a compliant shortlist.
+- Budget exhaustion from the CLI, without a model request:
+  `MAX_RUN_SECONDS=0.000001 shift-assistant "Find two ICU nurses for the St. Mary's night shift on October 14"`.
+  The trace shows `no time left for a model call`, then the fallback. Explain the boundary:
+  the budget covers every model call, retry and backoff, and a late answer is discarded.
+  Deterministic steps may finish afterwards.
+
+## 4. Code-completed work and needs_review (60 seconds)
+
+A live model cannot be made lazy on demand, so use the offline harness, which replays scripted
+model turns:
+
+```bash
+python -m evals.run --case lazy-agent-completed-by-code --case required-check-fails-needs-review --show
+```
+
+- **lazy-agent-completed-by-code:** the scripted model vets one ineligible nurse, never searches
+  the pool and claims nobody qualifies. The report is `ready` in `agent` mode "with deterministic
+  completion". Code determined the pool, vetted the other 8 nurses, added 2 recommendations
+  (**Selected by: deterministic rules**) and drafted their outreach. The **Deterministic
+  completion** section lists each addition.
+- **required-check-fails-needs-review:** one compliance check is made to fail. Code cannot
+  finish the vetting, so the status is **needs_review**. The verified recommendations are kept,
+  the summary says one pool member was not evaluated, and the issues say why.
+
+Close with the results table in `evals/results/` and the limits in
+[design.md](design.md#known-limitations-and-unverified-behavior): scripted runs test the
+safeguards, not live model reasoning.

@@ -14,7 +14,9 @@
 
 Passed the recorded compliance checks for this shift. Recorded experience: 2 years.
 
-<details><summary>Outreach draft: Open Med-Surg day shift at Lakeside Community Hospital on Fri, Oct 16</summary>
+- **Selected by:** deterministic rules
+
+<details><summary>Outreach draft (drafted by deterministic rules): Open Med-Surg day shift at Lakeside Community Hospital on Fri, Oct 16</summary>
 
 ```text
 Hi Olivia,
@@ -37,9 +39,11 @@ Staffing Operations Team
 ### 2. Ethan Nguyen (C-113)
 
 Passed the recorded compliance checks for this shift. Recorded experience: 6 years. BLS expires 2026-10-31, 15 days after the shift. Request a renewal.
+
+- **Selected by:** deterministic rules
 - **Warning:** BLS expires 2026-10-31, 15 days after the shift. Request a renewal.
 
-<details><summary>Outreach draft: Open Med-Surg day shift at Lakeside Community Hospital on Fri, Oct 16</summary>
+<details><summary>Outreach draft (drafted by deterministic rules): Open Med-Surg day shift at Lakeside Community Hospital on Fri, Oct 16</summary>
 
 ```text
 Hi Ethan,
@@ -75,8 +79,8 @@ Staffing Operations Team
 ## Trace
 
 ```text
-[ 1] llm:model FAILED 0ms | Provider failure (ConnectionError)
+[ 1] llm:model FAILED 1ms | Provider failure (ConnectionError)
 [ 2] fallback:rules ok 1ms | LLM call failed (ConnectionError)
 ```
 
-0 LLM calls, 0 tool calls, 0 tokens, 0.0s.
+0 LLM calls, 0 tool calls, token usage unavailable, 0.0s.

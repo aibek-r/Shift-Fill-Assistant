@@ -1,14 +1,18 @@
 # Shift Fill Assistant
 
 An AI workflow assistant for the operations team of a healthcare staffing platform. A coordinator
-types a request such as *"Find two ICU nurses for the St. Mary's night shift on October 14 and draft outreach"*. The assistant then works through these steps:
+types a request such as *"Find two ICU nurses for the St. Mary's night shift on October 14 and
+draft outreach"*, and the assistant:
 
-1. Resolves the request to a concrete open shift, or asks a clarifying question.
-2. Retrieves the facility's policies (RAG) to learn unit preferences and rules.
-3. Finds candidate clinicians with semantic search over their profiles.
-4. Vets every candidate with a deterministic compliance engine. The engine checks license, jurisdiction, certifications valid through the shift, experience, double-booking and rest time.
-5. Ranks the eligible clinicians, explains each choice with citations, and drafts outreach for a human to review.
-6. Verifies the answer against the evidence the tools returned before showing it.
+1. Resolves the request to one open shift, or asks a clarifying question.
+2. Retrieves the facility's policies (RAG) for unit preferences and rules.
+3. Finds candidates with semantic search over clinician profiles.
+4. Vets every clinician in the shift's pool with a deterministic eligibility engine: license and
+   jurisdiction, certifications valid through the shift, experience, double booking and rest.
+5. Ranks the eligible clinicians, explains each choice from recorded facts with policy
+   citations, and drafts outreach for a human to review. Nothing is sent.
+6. Verifies the answer against the evidence the tools returned, finishes any mandatory work the
+   model skipped with deterministic rules, and labels what code added.
 
 > Senior AI Engineer take-home for Florence Healthcare, by
 > [Aibek Rysbek](https://github.com/aibek-r).
@@ -26,22 +30,23 @@ cp .env.example .env              # then set OPENAI_API_KEY
 streamlit run app/streamlit_app.py                     # web UI
 shift-assistant "Find two ICU nurses for the St. Mary's night shift on Oct 14"   # CLI
 pytest                                                 # offline tests, no API key needed
+python -m evals.run                                    # offline evaluation harness
 ```
 
-The first run downloads a small local embedding model of about 70 MB into `.cache/`. If that
-download fails, search falls back to keyword matching and the UI and CLI say so. Without an API
-key, the app still runs in deterministic fallback mode. `.env.example` pins `REFERENCE_DATE` so
-relative dates match the October 2026 mock shifts.
+**Agent mode needs your own OpenAI API key.** Without one, the app runs in rule-based fallback
+mode: the same eligibility engine and templates, with the shift matched to the request by rules.
+`examples/` contains saved runs from the live model, plus one rule-based run;
+[examples/README.md](examples/README.md) explains which ones predate the latest changes.
 
-Docker is optional, and the Dockerfile has not been verified in the final environment:
+The first run downloads a small local embedding model (about 70 MB) into `.cache/`. If that
+fails, search falls back to keyword matching, and the UI and CLI say so. `.env.example` pins
+`REFERENCE_DATE` so relative dates match the October 2026 mock shifts. Start Streamlit from this
+directory so it loads the theme in `.streamlit/config.toml`. The CLI also accepts `--shift`,
+`--facility`, `--unit` and `--date`, which override the request text.
+
+Docker is optional and **was not verified** in the latest environment (the Docker daemon was
+not running):
 `docker build -t shift-fill-assistant . && docker run -p 8501:8501 --env-file .env shift-fill-assistant`
-
-The UI uses a teal theme, a local calendar/checkmark logo, an illustrated empty state and
-initials avatars. The request and results sit in a centered, responsive workspace. When a
-clarifying question offers known facilities, facility cards update the request for review
-without making another model call. Selecting an example clears a previously pinned shift.
-Theme settings live in `.streamlit/config.toml`; start Streamlit from this project directory
-to load them. The SVG assets are local and require no external image service.
 
 ## Architecture
 
@@ -52,10 +57,11 @@ flowchart LR
         A[agent<br/>LLM plans next step] -->|tool calls| T[tools<br/>validated execution]
         T -->|results + evidence| A
         A -->|submit_recommendation| V[validate<br/>schema + grounding]
-        V -->|problems, budget left| A
-        V -->|ok| R[verify<br/>enforce grounding]
-        A -->|LLM error / step budget| F[fallback<br/>rules only]
-        V -->|unrecoverable| F
+        V -->|problems, repairs left| A
+        V -->|ok, or repairs used up| C[complete<br/>rules finish vetting,<br/>shortlist and drafts]
+        C --> R[verify<br/>enforce grounding,<br/>build report]
+        A -->|LLM error / step or time budget| F[fallback<br/>rules only]
+        V -->|rejected| F
     end
     R --> OUT[StaffingReport]
     F --> OUT
@@ -65,151 +71,103 @@ flowchart LR
 
 | Layer | Module | Responsibility |
 | --- | --- | --- |
-| Domain | `domain/models.py`, `domain/eligibility.py` | Typed entities and the **deterministic compliance engine** |
+| Domain | `domain/` | Typed entities, structured shift preferences, and the **deterministic eligibility engine** |
 | Data | `repository.py` | Loads and validates the JSON "system of record", including referential integrity |
 | Retrieval | `retrieval/` | fastembed embeddings, a cosine vector index with metadata pre-filtering, policy chunking |
 | Tools | `tools/` | Five tools with Pydantic argument schemas, plus a registry that never raises |
-| Agent | `agent/` | LangGraph state machine, prompts, the structured submission schema |
-| Reliability | `reliability/` | Grounding checker, verifier, deterministic fallback |
-| Interfaces | `app/streamlit_app.py`, `cli.py` | Streamlit UI with live progress and a trace under Technical details, and a CLI that prints Markdown or JSON |
+| Agent | `agent/` | LangGraph state machine, prompts, the structured submission, model budget and retries |
+| Reliability | `reliability/` | Grounding checks, deterministic completion, verifier, status rules, fallback shift resolution, rule-based fallback |
+| Interfaces | `app/streamlit_app.py`, `cli.py` | Streamlit UI with live progress, review and a trace; CLI printing Markdown or JSON |
+| Evaluation | `evals/` | Offline evaluation harness (`python -m evals.run`) |
 
-## How the requirements are met
+## How the assignment requirements are met
 
 | Requirement | Implementation |
 | --- | --- |
-| **Agent workflow** with multi-step reasoning, tool calling and context management | A LangGraph ReAct loop (`agent` and `tools` nodes) with typed state. The model chooses tools, with parallel calls allowed. The workflow ends only through a validated `submit_recommendation` tool call, enforced by `tool_choice="required"`. |
-| **Tools** (at least 2 or 3) | `find_open_shifts`, `search_facility_policies`, `search_clinicians`, `evaluate_candidates` and `draft_outreach`, plus the submit tool. All data is mocked. |
-| **Retrieval and context engineering** | **RAG** over facility handbooks, one chunk per `##` section, with stable citation IDs such as `FAC-001#icu-unit-profile`. **Embeddings and vector search** use local `bge-small` via fastembed. **Context filtering** limits retrieval to the facility and global policies. **PII minimisation** omits structured contact and license-number fields; free text still needs production redaction. **Memory and state** use a run-scoped `EvidenceLedger`. Size-capped tool output drops whole list items and retains valid JSON with a `truncated` note. |
-| **Structured outputs** | The final answer is a Pydantic `AgentSubmission` passed as tool arguments. The public output is a typed `StaffingReport` with recommendations, alternates, exclusions with reason codes, candidate coverage counts, issues, trace and metrics. Code writes the summary from the verified lists, so counts never contradict them. |
-| **Reliability** | See the next section. |
+| **Agent workflow:** multi-step reasoning, tool calling, context management | A LangGraph ReAct loop with typed state. The model chooses tools (parallel calls allowed) and must finish through a validated `submit_recommendation` call (`tool_choice="required"`). Validation, deterministic completion and verification follow as graph steps. |
+| **Tools** (at least 2-3) | `find_open_shifts`, `search_facility_policies`, `search_clinicians`, `evaluate_candidates`, `draft_outreach`, plus the submit tool. All data is mocked. |
+| **Retrieval and context engineering** | RAG over facility handbooks (one chunk per `##` section, citation IDs such as `FAC-001#icu-unit-profile`); local `bge-small` embeddings; retrieval filtered to the facility and global policies; contact and license fields kept out of the model's context; a run-scoped `EvidenceLedger` as working memory; size-capped tool output that stays valid JSON. |
+| **Structured outputs** | The final answer is a Pydantic `AgentSubmission`. The public output is a typed `StaffingReport` with recommendations and their provenance, alternates, exclusions with reason codes, coverage counts, a completion record, issues, a trace and metrics. |
+| **Reliability** | Validation everywhere, grounding checks with self-repair, deterministic completion, a bounded model budget with retries, a rule-based fallback, and an offline evaluation harness. See below. |
 
-## Reliability and hallucination mitigation
+## Reliability at a glance
 
-The core principle is that **code renders recorded facts and decides compliance, and the model
-plans the workflow and ranks eligible clinicians**.
+Code renders recorded facts and decides compliance; the model plans and ranks. Details and
+trade-offs are in [docs/design.md](docs/design.md).
 
-- **Deterministic compliance.** `EligibilityEngine` makes every eligibility verdict. The model
-  cannot overrule it. `draft_outreach` refuses ineligible clinicians, and the verifier drops any
-  ineligible clinician who reaches the answer.
-- **Facts from the record.** Explanations and outreach show recorded experience, a matching
-  structured shift preference (or explicit openness to the offered period), shift times and
-  credential warnings. Preferences are labelled as self-reported, never quoted from profile free
-  text, and never affect eligibility.
-  The model and coordinator select 1-3 approved friendly sentences for the personal note; the
-  editor displays the options. Arbitrary factual edits are rejected, including pay written in
-  words, arrival instructions, other clinicians and invented qualifications. This deliberately
-  limits free-text editing; it does not attempt to prove arbitrary prose with regex checks.
-- **Request intent.** Common explicit phrases such as "find two nurses", "shortlist of four"
-  and "do not draft outreach" populate typed `requested_count` and `draft_outreach` fields.
-  API callers can set those fields explicitly for other wording. Both the agent and fallback
-  honor them. `ready` means the requested shortlist is complete, independently of open positions;
-  the summary reports both. A shortage or configured recommendation limit remains `partial`.
-  The pinned shift is enforced during tool execution and final verification.
-  Common relative dates (today, tomorrow, this week and next week) are checked against
-  `REFERENCE_DATE`, or today's date when unset. Calendar weeks run Monday through Sunday;
-  shifts outside the requested period require clarification in both agent and fallback modes.
-- **Grounding checks with self-repair.** On submission, `check_grounding` confirms that each
-  reference came from this run's evidence. The shift, every clinician (vetted and eligible),
-  every citation and every draft must be there, and citations must belong to the shift's facility
-  or the organisation-wide policies. It also confirms that the candidate pool was searched and
-  every clinician in it was vetted, and that each rationale mentions the clinician's credential
-  warnings. Problems go back to the model as a tool error, and it gets up to
-  `MAX_REPAIR_ATTEMPTS` tries to fix them.
-- **What is verified.** References, eligibility, requested shortlist size and coverage are checked
-  by code. Unverified model rationales and summary notes are not displayed or exported; factual
-  candidate explanations are rebuilt from evaluation evidence. Policy citations show retrieved
-  facility context, rather than establishing arbitrary prose claims. For supported relative
-  dates, code builds the clarification question from recorded shifts and labels dates outside
-  the requested period as alternatives. Other clarification questions remain model-written.
-- **Enforcement.** If repairs run out, the verifier strips whatever is ungrounded and records each
-  removal as an issue in the report. Names, warnings, citation text and drafts in the report always
-  come from the ledger, never from model text.
-- **Validation everywhere.** Data files, tool arguments, the submission and the request are all
-  Pydantic models. Bad tool arguments, unknown IDs and malformed JSON become readable errors that
-  the model can recover from. Unexpected tool exceptions are logged and contained without leaking
-  internals.
-- **Retries and fallback.** SDK retries are disabled; the workflow retries rate limits,
-  timeouts and selected 5xx errors itself, with backoff, inside one model execution budget
-  (`MAX_RUN_SECONDS`). Answers that arrive after the deadline are discarded. If the LLM still
-  fails, is missing, or exceeds `MAX_AGENT_STEPS` or the budget, the graph routes to a
-  **deterministic fallback**. It uses the same engine
-  and templates and labels the report `mode: fallback`. Without a selected shift it resolves the
-  facility, unit and date from typed request fields or conservative text parsing, and asks when
-  several shifts or none match (see [docs/design.md](docs/design.md)). It uses the requested
-  shortlist size, or open positions when unspecified, and honors requests without outreach. The
-  UI can simulate an outage to show this.
-- **Degraded retrieval is visible.** If the embedding model cannot load, keyword matching takes
-  over with a relevance cut-off suited to it, and the UI and CLI show a warning. Missing or empty
-  facility/global policy documents add a visible `POLICY_CONTEXT_MISSING` report issue in both
-  modes; tool results also warn when no relevant excerpts are retrieved.
-- **Review and export.** JSON downloads contain saved outreach edits plus the run ID and each
-  draft's current `pending`, `editing` or `approved` status. Unsaved or rejected text is never
-  exported. Editing withdraws approval, and invalid requests or changes to the selected shift
-  or outage control clear earlier reports and approvals.
-- **Prompt-injection hygiene.** The prompt says tool data is data, not instructions. One mock
-  profile, Aisha Rahman, contains an injection attempt. She is ineligible anyway, and the verifier
-  would drop her even if the model complied.
-- **Auditability.** Every LLM call, tool call, validation and verification step is recorded as a
-  trace event with its timing and tokens. The trace appears under Technical details in the UI and is saved in the report.
+- **Eligibility is deterministic.** `EligibilityEngine` makes every verdict, and the model
+  cannot override it. Ineligible clinicians never reach recommendations or outreach.
+- **Every reference is grounded.** Shifts, clinicians, citations and drafts must exist in the
+  run's evidence. Problems go back to the model as repair feedback, up to
+  `MAX_REPAIR_ATTEMPTS`, and are enforced by the verifier afterwards. Displayed explanations,
+  warnings and outreach facts come from records, never from model prose.
+- **Status follows completed work.** A status only rules something out once the relevant work
+  is done (full table in [design.md](docs/design.md#report-status-and-completion-conditions)):
+
+  | Status | Meaning |
+  | --- | --- |
+  | `ready` | Whole pool vetted, requested shortlist reached, requested drafts present |
+  | `partial` | Whole pool vetted, but fewer eligible (or allowed) clinicians than requested |
+  | `no_eligible_candidates` | Whole pool vetted, nobody eligible |
+  | `needs_review` | Mandatory work unresolved; verified recommendations are kept |
+  | `needs_clarification` | The request does not identify one shift |
+  | `failed` | No usable answer |
+
+- **Deterministic completion with provenance.** After validation, code vets pool members the
+  model skipped (computing the pool if it never searched), fills a short shortlist in rule order
+  after the model's own valid picks, and drafts missing outreach when it was requested. Each
+  recommendation records `selected_by` and `outreach_by` (`model` or `code`), and the report
+  lists what code completed.
+- **Model execution budget.** One monotonic deadline (`MAX_RUN_SECONDS`) covers every model call,
+  retry and backoff. SDK retries are off; rate limits, timeouts and selected 5xx errors are
+  retried with backoff that never crosses the deadline; late answers are discarded. It is not a
+  total-workflow deadline: completion and fallback may run afterwards.
+- **Rule-based fallback.** If the model is missing, fails or exceeds a budget, the fallback
+  applies the same engine and templates. Without a selected shift it resolves the facility, unit
+  and date from typed fields or conservative text parsing, and asks when several shifts or none
+  match.
+- **Privacy and human review.** No contact details, license numbers or pay rates in drafts; each
+  draft names only its recipient; notes are limited to approved sentences; editing withdraws
+  approval; delivery is simulated, and nothing is ever reported as sent.
+- **Prompt-injection hygiene.** Tool data is treated as data. One mock profile contains an
+  injection attempt; its clinician is ineligible, and a scripted model that obeys it is
+  overruled by the verifier (an evaluation case, not a general guarantee).
 
 ## Example workflows
 
-These were generated by `python scripts/run_examples.py` against the live model. Each has a
-readable `.md` and a full `.json` report.
+Generated by `python scripts/run_examples.py`. Each has a readable `.md` and a full `.json`.
+Examples 01-05 are live-model runs recorded before the latest changes and need regeneration to
+show current behavior; 06 was regenerated offline from the current code.
 
 | Example | Demonstrates | Result |
 | --- | --- | --- |
-| [01-icu-night-shift](examples/01-icu-night-shift.md) | Full ReAct loop, RAG citations, six exclusions with reason codes, an eligible alternate | `ready`. Maria Santos and Grace Liu recommended, Daniel Kim kept as an alternate |
-| [02-picu-shortlist-with-warning](examples/02-picu-shortlist-with-warning.md) | Expiring-credential warning carried into the rationale and the outreach | `ready`, with Liam Chen's PALS flagged |
-| [03-ambiguous-request](examples/03-ambiguous-request.md) | Clarification instead of guessing | `needs_clarification` |
-| [04-unknown-facility](examples/04-unknown-facility.md) | Tool error turned into a helpful question | `needs_clarification` |
-| [05-no-eligible-candidates](examples/05-no-eligible-candidates.md) | Honest "nobody qualifies" answer, with reasons | `no_eligible_candidates` |
-| [06-llm-outage-fallback](examples/06-llm-outage-fallback.md) | Simulated LLM outage, rules-only report | `ready` (`mode: fallback`) |
+| [01-icu-night-shift](examples/01-icu-night-shift.md) | Full ReAct loop, RAG citations, six exclusions with reason codes, an eligible alternate | `ready` (agent) |
+| [02-picu-shortlist-with-warning](examples/02-picu-shortlist-with-warning.md) | Expiring-credential warning carried into the explanation and the outreach | `ready` (agent) |
+| [03-ambiguous-request](examples/03-ambiguous-request.md) | Clarification instead of guessing | `needs_clarification` (agent) |
+| [04-unknown-facility](examples/04-unknown-facility.md) | Tool error turned into a clarifying question | `needs_clarification` (agent) |
+| [05-no-eligible-candidates](examples/05-no-eligible-candidates.md) | A verified "nobody qualifies" answer with reasons | `no_eligible_candidates` (agent) |
+| [06-llm-outage-fallback](examples/06-llm-outage-fallback.md) | Simulated outage; every recommendation labelled as produced by rules | `ready` (fallback) |
 
-A typical full run takes about 5 LLM calls, 14k tokens and 15 seconds. Hallucination repair and
-enforcement cannot be triggered on demand with a live model, so they are shown by the scripted
-tests below.
+The saved live runs took 2-5 LLM calls each. Repair, enforcement, completion, `needs_review` and
+budget exhaustion cannot be triggered on demand with a live model; the tests and the evaluation
+harness cover them. [docs/DEMO.md](docs/DEMO.md) is a five-minute demo guide.
 
-## Testing
+## Testing and evaluation
 
-`pytest` runs 125 tests offline, including headless Streamlit interactions. They use a hashing embedder and a scripted
-chat model, so they prove the workflow's control flow and safeguards, not the live model's
-judgement.
+```bash
+pytest                                               # 230 offline tests
+python -m evals.run                                  # 10 cases x (scripted agent, fallback)
+ruff check src app scripts tests evals
+ruff format --check src app scripts tests evals
+mypy --strict src app scripts tests evals
+```
 
-- **Eligibility.** Every blocker type, warnings, and the boundary where a credential expires on
-  the shift's last day.
-- **Retrieval.** Chunk IDs, ranking, proof that a facility's search never returns another
-  facility's policies, and the keyword fallback when the embedding model cannot load.
-- **Tools.** Structured contact fields are omitted. Errors are readable. Exceptions are contained. Outreach for
-  ineligible clinicians and notes with pay rates are refused. Oversized output stays valid JSON.
-- **Workflow.** The happy path. A hallucinated candidate sent back for repair. Ungrounded content
-  stripped once repairs run out. Incomplete vetting and an unsearched pool caught, including a
-  "no eligible" claim after checking one clinician. Another facility's citation dropped. A
-  rationale that omits a credential warning sent back. An unparseable answer, an LLM outage, a
-  missing key, and step- and time-budget overruns all degrading to the fallback, including after
-  the agent narrowed several shifts down to one. Malformed tool-call JSON and an early submit
-  reported back to the model.
-- **Reporting.** Summary counts always match the report lists, are rebuilt after verification
-  removes a recommendation, and never claim full coverage unless it was confirmed.
-- **Outreach review.** Edited notes are revalidated, keep the verified shift details, and editing
-  an approved message withdraws the approval. JSON exports match saved edits and approval state.
-  Invalid submissions and shift/mode changes clear stale results; reopening the editor restores
-  saved text rather than a rejected edit. Approvals never carry over to a new run.
-- **Review regressions.** PICU shortlists of two, one requested clinician for two open positions,
-  shortlists larger than the eligible pool, size limits, cross-shift tool calls and submissions,
-  unsupported factual model text, negated/conditional preferences, missing policy files and
-  unsupported generated or edited notes.
-- **Preferences.** Structured fields only; a conflicting preference is never presented as support.
-
-Ranking quality and the rate of grounding problems still need live evaluation. The example
-reports were regenerated after these fixes using the paid model and real local embeddings;
-the outage example uses the deterministic fallback.
-
-`python -m evals.run` runs the offline evaluation harness (10 cases, scripted agent and rules-only
-fallback) and writes `evals/results/<timestamp>.md`; see [docs/design.md](docs/design.md).
-
-`ruff check`, `ruff format --check` and `mypy --strict` all pass on `src/`, `app/`, `scripts/`,
-`tests/` and `evals/`.
+Tests run offline with a scripted chat model and a hashing embedder, including headless
+Streamlit interactions. They prove the workflow's control flow and safeguards, not the live
+model's judgement. The evaluation harness scores status, shift resolution, full-pool
+eligibility, accepted rankings, outreach, privacy, grounding issues, repairs, completion,
+fallback rate and latency, and writes `evals/results/<timestamp>.md`. Token usage is reported as
+unavailable when no model call reported it. See [docs/validation.md](docs/validation.md).
 
 ## Configuration
 
@@ -221,7 +179,7 @@ All settings live in `config.py` and can be overridden through environment varia
 | `OPENAI_MODEL` | `gpt-5.4-mini` | Any tool-calling OpenAI model |
 | `OPENAI_REASONING_EFFORT` | `low` | Set `none` for non-reasoning models such as `gpt-4.1-mini` |
 | `MAX_AGENT_STEPS` / `MAX_REPAIR_ATTEMPTS` | `12` / `2` | Loop budgets |
-| `MAX_RUN_SECONDS` | `180` | Model execution budget: one deadline for every model call, retry and backoff. Not a total-workflow deadline; completion and fallback may run after it |
+| `MAX_RUN_SECONDS` | `180` | Model execution budget: one deadline for every model call, retry and backoff (not a total-workflow deadline) |
 | `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | `60` / `3` | Per-call timeout (shortened to the budget left) and retries for transient errors; SDK retries are disabled |
 | `MAX_RECOMMENDATIONS` | `5` | Upper bound on the shortlist |
 | `RETRIEVAL_MIN_SCORE` | `0.5` | Policy relevance cut-off for the embedding model (keyword fallback uses `0`) |
@@ -230,30 +188,34 @@ All settings live in `config.py` and can be overridden through environment varia
 
 ## Mock data
 
-The mock data lives in `data/`. It holds 3 facilities, 7 open shifts, 20 clinicians, 3 existing
-bookings and 4 policy handbooks. Each clinician exercises a specific rule, for example:
+`data/` holds 3 facilities, 7 open shifts, 20 clinicians, 3 existing bookings and 4 policy
+handbooks. Each clinician exercises a specific rule: an ACLS certificate that expires before
+the shift, a California-only license at a Texas facility, a compact license at a facility that
+rejects compact licenses, a double booking, too little rest, an inactive profile, and a
+certificate expiring within 30 days (a warning, not a blocker). Shift preferences are structured
+fields transcribed from each profile.
 
-- an ACLS certificate that expires before the shift
-- a California-only license at a Texas facility
-- a compact license at a facility that does not accept compact licenses
-- a double booking
-- too little rest between shifts
-- an inactive profile
-- a certificate expiring within 30 days, which is a warning rather than a blocker
+## Known limitations
 
-## Trade-offs and next steps
+- The current code has not been run against the live model: completion rates, ranking under
+  the new rubric and real retry behavior are unmeasured. The saved agent examples predate it.
+- Scripted tests and evaluations validate orchestration and safeguards, not live reasoning or
+  real retrieval quality.
+- Text parsing for counts, outreach intent, facility, unit and dates handles common phrasing
+  only; typed request fields cover the rest.
+- The model budget cannot interrupt a call in flight, so it is not a strict wall-clock limit.
+- Mock data only; no authentication, persistent audit trail, PII redaction of free-text
+  profiles, or real message delivery. Docker was not verified here.
 
-- **The model's ranking varies a little between runs.** Compliance is deterministic, but ordering
-  among eligible clinicians is the model's judgement. I tightened it with an explicit ranking
-  rubric and the vetting-coverage check. Next I would build a golden-set evaluation harness that
-  scores ranking agreement and grounding rate on every prompt or model change.
-- **Scale.** The brute-force numpy index is fine for hundreds of chunks. At scale I would move to
-  pgvector or a managed vector database, and use hybrid BM25 plus vector search.
-- **Production hardening.** I would add real data sources behind the repository interface,
-  persist the audit trace, and add OpenTelemetry or LangSmith tracing, authentication, rate
-  limits, and a HIPAA and PII review of what reaches the LLM provider.
-- **Conversation memory.** A LangGraph checkpointer would let a coordinator answer the
-  clarifying question in the same thread.
-- **Human in the loop.** The UI already lets a coordinator edit and approve each draft, but
-  delivery is simulated. I would connect it to a real messaging channel and keep an audit record
-  of who approved and sent what.
+More in [docs/design.md](docs/design.md#known-limitations-and-unverified-behavior).
+
+## Next steps
+
+- Regenerate the examples and run `python -m evals.run --live` to measure live completion and
+  ranking rates against the offline baseline.
+- Move from the brute-force index to pgvector with hybrid BM25 plus vector search at scale.
+- Add real data sources behind the repository interface, persisted audit records, tracing,
+  authentication, and a HIPAA and PII review of what reaches the model provider.
+- Keep conversation state with a LangGraph checkpointer so a coordinator can answer a clarifying
+  question in the same thread.
+- Connect approved drafts to a real messaging channel, recording who approved and sent what.

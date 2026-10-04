@@ -2,6 +2,37 @@
 
 Detailed design decisions and trade-offs. The README keeps the overview and setup.
 
+Contents: [boundaries](#what-code-decides-and-what-the-model-decides) ·
+[statuses](#report-status-and-completion-conditions) ·
+[completion and provenance](#deterministic-completion) ·
+[model budget](#model-execution-budget) · [fallback resolution](#fallback-shift-resolution) ·
+[preferences](#shift-preferences) · [evaluation](#offline-evaluation) ·
+[limitations](#known-limitations-and-unverified-behavior)
+
+## What code decides and what the model decides
+
+The model plans the workflow, chooses tool calls, and ranks eligible clinicians. Code decides
+everything a coordinator must be able to trust:
+
+- **Eligibility.** `EligibilityEngine` (`domain/eligibility.py`) is the only authority:
+  licensure for the facility state, required certifications valid through the shift end,
+  experience, double booking and rest time. The model cannot override it. `draft_outreach`
+  refuses ineligible clinicians, and the verifier drops any ineligible clinician who reaches the
+  answer, so ineligible clinicians never appear in recommendations or receive drafts.
+- **Grounding.** Every shift, clinician, citation and draft in an answer must exist in this
+  run's `EvidenceLedger`. `check_grounding` runs twice: once as repair feedback to the model,
+  then enforced by the verifier. Citations must belong to the shift's facility or the global
+  policies, and a pinned shift cannot be swapped.
+- **Rendering.** Names, warnings, credential badges, explanations, citation text and outreach
+  facts come from recorded evidence, not model prose. Model rationales and summaries are never
+  displayed. Outreach notes are limited to five approved friendly sentences. Pay rates, contact
+  details, license numbers and other clinicians' information are never added, and editing an
+  approved draft withdraws the approval.
+- **Status, counts and completion.** Code computes coverage counts, the summary and the status
+  (below), and finishes mandatory work the model skipped.
+- **Delivery.** Nothing is sent. Approving a draft records the coordinator's decision; no
+  delivery integration exists, so nothing is ever reported as sent.
+
 ## Report status and completion conditions
 
 `reliability/reporting.py::fill_status` decides the status of every staffing report, in both
@@ -196,3 +227,24 @@ validation, completion, verification, fallback and status logic. They do not mea
 reasoning, ranking quality or real retrieval quality. The injection case shows that the
 safeguards hold when a scripted model obeys one malicious profile instruction; it is not proof of
 general prompt-injection resistance. Offline latency says nothing about live latency.
+
+## Known limitations and unverified behavior
+
+- **Live behavior after these changes is unverified.** Deterministic completion, the budget and
+  retry policy, the structured-preference rubric and the prompt changes were tested only with a
+  scripted model and keyword (`HashingEmbedder`) retrieval. How often the real model leaves work
+  for completion, how it ranks with the new rubric, and real retry and timeout behavior have not
+  been measured. The adapter test confirms only that SDK retries are off and that the shortened
+  timeout reaches the HTTP request.
+- **Saved agent examples predate these changes** (see `examples/README.md`).
+- **Retrieval quality** with the real `bge-small` model is not evaluated by the harness.
+- **Text parsing is deliberately narrow.** Shortlist size, outreach intent, facility, unit and
+  date extraction handle common phrasing only; callers can set typed fields for anything else.
+  "M/D" dates are read month-first.
+- **The budget is not a hard wall-clock limit.** A call in flight can overrun the deadline
+  before it is discarded, and deterministic steps after the deadline are not time-limited.
+- **Mock data only.** Credentials are not verified with an issuing authority. Free-text profiles
+  still reach the model and would need PII redaction in production. Authentication, persistent
+  audit records and real message delivery are out of scope.
+- **Docker** is documented but was not verified in this environment (the Docker daemon was not
+  running).

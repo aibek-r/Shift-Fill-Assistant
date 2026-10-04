@@ -1,4 +1,6 @@
-"""Regression checks for the failures reproduced during the take-home review."""
+"""Regression tests: request intent, shortlist size, pinned shifts, unverified model text,
+outreach notes, review exports and missing policy context.
+"""
 
 from __future__ import annotations
 

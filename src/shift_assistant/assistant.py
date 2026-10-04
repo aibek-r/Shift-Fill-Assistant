@@ -52,7 +52,8 @@ class ShiftFillAssistant:
         self.llm_enabled = deps.model is not None
         self._clock = deps.clock
         self._graph = build_agent_graph(deps)
-        # Each LLM call costs at most three graph steps (agent, tools or validate, verify).
+        # Each LLM call costs two graph steps (agent, then tools or validate); the run ends with
+        # at most two more (complete and verify, or fallback). The limit leaves ample slack.
         self._recursion_limit = settings.max_agent_steps * 3 + 10
 
     def run(self, request: StaffingRequest, on_event: EventHandler | None = None) -> StaffingReport:

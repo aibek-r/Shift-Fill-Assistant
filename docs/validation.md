@@ -1,70 +1,59 @@
-# Main issue fixes and validation
+# Validation methods
 
-## Relative-date follow-up: October 4, 2026
+How the project is checked, and what each method can and cannot show.
 
-- Reproduced the screenshot's misleading clarification with a scripted model: "next week"
-  from the configured October 2 reference date means October 5–11, not October 14 or 16.
-- Code now renders supported relative-date clarifications from retrieved shift records,
-  identifies dates outside the requested window as alternatives, and blocks completed
-  submissions outside that window. Fallback also asks for confirmation instead of staffing
-  an alternative. An explicitly pinned shift continues to override conflicting request text.
-- Calendar weeks run Monday through Sunday. Tests cover Monday/Sunday boundaries, year
-  rollover, matching dates, mismatching dates, repair feedback, fallback and pinned shifts.
-  Supported expressions are today, tomorrow, this week and next week; multiple different
-  expressions are left to the model for clarification.
-- All 125 offline tests, Ruff lint/format checks and strict mypy checks passed.
-- One paid `gpt-5.4-mini` check with hashing retrieval completed in agent mode with
-  `needs_clarification`, explicitly reporting no St. Mary's ICU shifts for October 5–11.
-  It used 3 LLM calls, 5,656 input tokens and 603 output tokens, estimated at approximately
-  $0.00696. The local report is saved in `../tmp/relative-date-live.json`.
+## Offline tests (`pytest`)
 
-## Original main-issue validation
+All tests run offline. A scripted chat model replays fixed tool calls and submissions, and a
+hashing embedder stands in for the sentence-embedding model, so no API key or download is
+needed. They cover:
 
-Validated on October 3, 2026 with Python 3.13.15, Streamlit 1.65.0 and
-`gpt-5.4-mini`. All staffing data used in paid calls was mocked.
+- **Eligibility:** every blocker type, credential warnings and the expiry boundary on the
+  shift's last day.
+- **Retrieval:** chunking, ranking, facility-scoped policy search and the keyword fallback.
+- **Tools:** argument validation, readable errors, contained exceptions, privacy of search
+  results, outreach refusal for ineligible clinicians and output truncation.
+- **Workflow:** the ReAct loop, repair feedback, enforcement when repairs run out, deterministic
+  completion, needs_review outcomes, fallbacks, pinned shifts and relative dates.
+- **Model budget:** a fake monotonic clock covers budget exhaustion before a call, retries
+  stopping at the deadline, backoff limits, late answers and safe recovery. An adapter test
+  intercepts the HTTP transport to confirm that SDK retries are disabled and that each request
+  carries the shortened timeout. No request leaves the machine.
+- **Fallback shift resolution:** unique and multiple matches, unknown facilities, typed fields
+  overriding text, yearless future and past dates, relative dates and facility time zones.
+- **Structured preferences:** absent, matching, conflicting and explicitly flexible preferences.
+- **Reporting and review:** counts match the report lists, status completion conditions, edits
+  revalidated, approval withdrawn on edit, and JSON exports matching saved state.
+- **UI:** headless Streamlit `AppTest` runs real widgets and callbacks, including needs_review
+  rendering and provenance labels. Visual layout and browser file downloads are not checked.
 
-## Changes
+Scripted tests prove control flow and safeguards, not the live model's judgement.
 
-| Review finding | Result |
-| --- | --- |
-| Requested PICU shortlist of two returned one | Explicit count becomes typed request intent; incomplete submissions receive repair feedback. Fallback uses the same target. |
-| One clinician for two positions was partial; three for a request of four was ready | Completion compares the shortlist with the requested count. Open positions are reported separately. |
-| JSON kept the original outreach after editing | Export snapshots saved text, run ID and current approval status. Editing withdraws approval. |
-| Final answer could reference a different pinned shift | Tool execution and final verification enforce the pin. A resolved pin cannot be replaced by a question about switching shifts. |
-| Explanations changed preferences or invented qualifications | Final candidate explanations come from evaluation facts. Recognized preference clauses are quoted exactly and labelled self-reported. Unverified model notes are omitted. |
-| Edited notes admitted unsupported pay, logistics, qualifications and other clinicians | Generated and edited notes use approved friendly sentences; recorded facts and logistics are added separately. Arbitrary factual note edits are rejected. |
-| Old results survived invalid submissions or shift changes; missing policies were silent | Invalid submissions and shift/mode changes clear reports and approvals. Missing or empty facility/global policy documents produce a visible report warning. |
+## Offline evaluation (`python -m evals.run`)
 
-The six example JSON and Markdown reports were refreshed from the updated implementation.
+Ten cases run through the scripted agent and the rules-only fallback, scored against
+expectations derived from the mock records. See [design.md](design.md#offline-evaluation) for
+what is scored and what the results do not show. Results are written to `evals/results/`.
 
-## Checks
+## Static checks
 
-- 108 offline tests pass, including actual Streamlit widgets, callbacks, saved edits,
-  approvals, export payloads, rejected edits, stale result clearing and fresh run state.
-- Ruff lint, Ruff formatting and strict mypy checks pass for source, app, scripts and tests.
-- The six refreshed example reports passed 85 independent checks against mock shift records,
-  eligibility verdicts, warnings, source-backed explanations and re-rendered outreach.
-- Paid model checks with real local `bge-small` embeddings passed: ICU shortlist,
-  PICU shortlist with PALS warning, ambiguous request, unknown facility, no eligible NICU
-  candidates, one clinician without outreach, four requested with only three eligible,
-  conflicting pinned shift, missing policies, and a headless Streamlit PICU run with edit,
-  approval and JSON export. A simulated outage also passed with the rules-only fallback.
-- During live testing, the first conflicting-pin run asked to switch shifts. A new
-  deterministic guard was added; the repeated live run completed the pinned ICU shift.
-- Additional fix validation used an estimated **$0.127224**. Including the earlier review,
-  estimated uncached API cost was **$0.453783**, below the authorized **$2 total cap**.
-  This is a token-based estimate, not an invoice reconciliation.
+```bash
+ruff check src app scripts tests evals
+ruff format --check src app scripts tests evals
+mypy --strict src app scripts tests evals
+```
 
-## Limits
+## Live model checks
 
-The browser connection was unavailable. Streamlit was checked through headless `AppTest`;
-visual layout and a browser's actual file-download interaction remain unverified.
+`scripts/run_examples.py` regenerates the saved examples with the live model, and
+`python -m evals.run --live` runs the evaluation cases against it. Both make paid API calls and
+need `OPENAI_API_KEY`. The saved agent examples were produced before the latest changes, and the
+current code has not been run against the live model (see `examples/README.md`).
+`python scripts/run_examples.py --offline` regenerates only the rules-only outage example.
 
-Count extraction intentionally handles common explicit phrases, rather than arbitrary language.
-Callers can set typed request fields directly. Preference extraction omits unknown conditional
-or negated wording instead of guessing. Outreach editing is intentionally restricted to the
-suggested friendly sentences.
+## Not verified here
 
-Ranking among eligible clinicians still varies with the model. The mock credentials and
-profiles are not independently verified with an issuing authority. Production authentication,
-persistent audit records, free-text PII redaction and real message delivery remain future work.
+- Live model behavior with the current prompts, completion step and retry policy.
+- Retrieval quality with the real embedding model.
+- The Docker image (the Docker daemon was not running).
+- Visual layout in a browser.

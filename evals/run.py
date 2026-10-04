@@ -1,6 +1,7 @@
 """Run the evaluation cases and write a Markdown report to evals/results/<timestamp>.md.
 
     python -m evals.run            # offline: scripted agent + rules-only fallback, no API key
+    python -m evals.run --case lazy-agent-completed-by-code --show   # also print the reports
     python -m evals.run --live     # agent runs against the real model; needs OPENAI_API_KEY
 
 Offline runs freeze each case's reference date, use the HashingEmbedder and never read the API
@@ -28,6 +29,7 @@ from shift_assistant.agent.llm import ToolCallingModel
 from shift_assistant.assistant import build_assistant
 from shift_assistant.config import PROJECT_ROOT, Settings
 from shift_assistant.contracts import RunMode, StaffingReport
+from shift_assistant.rendering import render_markdown
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.retrieval.embedder import Embedder, HashingEmbedder, create_embedder
 from shift_assistant.tools.toolkit import StaffingToolkit
@@ -58,6 +60,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--live", action="store_true", help="Use the real model (paid API calls).")
     parser.add_argument("--case", action="append", help="Run only these case IDs.")
     parser.add_argument("--output", type=Path, default=RESULTS_DIR, help="Results directory.")
+    parser.add_argument("--show", action="store_true", help="Also print each run's report.")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.ERROR)  # injected faults log expected warnings
 
@@ -79,6 +82,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     started = datetime.now(UTC)
     path = args.output / f"{started:%Y%m%dT%H%M%SZ}.md"
     path.write_text(render(results, started, embedder, live=args.live), encoding="utf-8")
+    if args.show:
+        for result in results:
+            print(f"\n<!-- {result.case.id} | {result.path} -->")
+            print(render_markdown(result.report) if result.report else result.error)
     passed = sum(r.passed for r in results)
     print(f"{passed}/{len(results)} runs passed. Results: {path}")
     return 0 if passed == len(results) else 1
