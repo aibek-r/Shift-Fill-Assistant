@@ -111,7 +111,7 @@ def test_outreach_facts_come_from_the_system_of_record(registry: ToolRegistry) -
         {
             "shift_id": "SHF-1001",
             "clinician_id": "C-104",
-            "personal_note": "Your Level I trauma ICU background fits this unit well.",
+            "personal_note": "We would love to have you on this shift.",
         },
     )
     draft = result.evidence.drafts["DRAFT-SHF-1001-C-104"]

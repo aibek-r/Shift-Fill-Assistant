@@ -41,6 +41,7 @@ class PolicyKnowledgeBase:
     def __init__(
         self, embedder: Embedder, documents: Sequence[Document], min_score: float = 0.0
     ) -> None:
+        self.available_scopes = {d.metadata["facility_id"] for d in documents}
         self._index = VectorIndex(embedder, documents)
         self._min_score = min_score
 
@@ -64,6 +65,9 @@ class PolicyKnowledgeBase:
             min_score=self._min_score,
             where=lambda d: d.metadata["facility_id"] in allowed_scopes,
         )
+
+    def missing_scopes(self, facility_id: str) -> list[str]:
+        return sorted({facility_id, GLOBAL_SCOPE} - self.available_scopes)
 
 
 class ClinicianProfileIndex:

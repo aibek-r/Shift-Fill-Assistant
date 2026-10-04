@@ -12,7 +12,7 @@ from shift_assistant.tools.schemas import OutreachDraft
 from tests.conftest import make_settings
 
 DANIEL_DRAFT = "DRAFT-SHF-1001-C-104"
-NEW_NOTE = "Your ICU night experience would be a great help to this team."
+NEW_NOTE = "Thank you for considering this opportunity."
 
 
 @pytest.fixture(scope="module")

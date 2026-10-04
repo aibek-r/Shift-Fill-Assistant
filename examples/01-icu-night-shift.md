@@ -6,15 +6,13 @@
 
 ## Summary
 
-9 candidates evaluated, covering the shift's full candidate pool: 3 eligible, 6 excluded. 2 eligible clinicians shortlisted for 2 open positions; 1 eligible alternate was not shortlisted.
-
-**Agent notes:** The shortlisted clinicians were ordered by how closely their ICU experience matches the unit's preferred skill set, then by how well their stated day/night stance fits this night shift, and finally by the absence of credential warnings. C-101 comes first because the profile explicitly matches the unit's high-value CRRT and post-cardiac-surgery experience and strongly prefers night shifts. C-107 ranks next because the clinician has relevant ICU experience and is open to occasional nights, but the profile does not show the same depth of unit-preferred specialty fit; other eligible candidates ranked lower for having a credential warning or a less direct match to the ICU's preferred experience.
+9 candidates evaluated, covering the shift's full candidate pool: 3 eligible, 6 excluded. 2 eligible clinicians shortlisted for 2 open positions; 1 eligible alternate was not shortlisted. Requested shortlist: 2 of 2 clinicians.
 
 ## Recommendations
 
 ### 1. Maria Santos (C-101)
 
-Strongest overall match for the ICU night shift: 6 years of critical care experience, CCRN certification, and experience with CRRT and post-cardiac-surgery patients align closely with the unit's stated preferences. Also strongly prefers night shifts. No credential warnings were reported.
+Passed the recorded compliance checks for this shift. Recorded experience: 6 years. Profile wording (self-reported): “Strongly prefers night shifts”.
 - **Source:** `FAC-001#icu-unit-profile` (ICU unit profile)
 - **Source:** `GLOBAL#candidate-prioritization` (Candidate prioritization)
 
@@ -23,7 +21,9 @@ Strongest overall match for the ICU night shift: 6 years of critical care experi
 ```text
 Hi Maria,
 
-You look like a strong fit for this ICU night shift because you have 6 years in critical care, CCRN certification, and experience with CRRT and post-cardiac-surgery patients. You also strongly prefer night shifts, which aligns well with this opening.
+We would love to have you on this shift. Thank you for considering this opportunity.
+Your recorded experience: 6 years.
+Your profile states: “Strongly prefers night shifts”.
 
 Shift details
 - Facility: St. Mary's Medical Center (Austin, TX)
@@ -39,7 +39,7 @@ Staffing Operations Team
 
 ### 2. Grace Liu (C-107)
 
-Solid ICU fit with 5 years of cardiovascular ICU experience and no credential warnings. The profile shows a day-shift preference but also openness to occasional nights, making the clinician a reasonable second choice for this night shift.
+Passed the recorded compliance checks for this shift. Recorded experience: 5 years. Profile wording (self-reported): “Prefers day shifts but is open to occasional nights”.
 - **Source:** `FAC-001#icu-unit-profile` (ICU unit profile)
 - **Source:** `GLOBAL#candidate-prioritization` (Candidate prioritization)
 
@@ -48,7 +48,9 @@ Solid ICU fit with 5 years of cardiovascular ICU experience and no credential wa
 ```text
 Hi Grace,
 
-Your cardiovascular ICU background and 5 years of ICU experience fit this St. Mary’s ICU night shift well. You prefer day shifts but are open to occasional nights, which may make this a good match for your schedule.
+We would love to have you on this shift. We think you would fit this unit well.
+Your recorded experience: 5 years.
+Your profile states: “Prefers day shifts but is open to occasional nights”.
 
 Shift details
 - Facility: St. Mary's Medical Center (Austin, TX)
@@ -70,12 +72,12 @@ Staffing Operations Team
 
 | Clinician | Reasons |
 | --- | --- |
-| James Okafor (C-102) | `CREDENTIAL_EXPIRED` ACLS expires 2026-10-10, before the shift ends on 2026-10-15. |
-| Sofia Martinez (C-109) | `SCHEDULE_CONFLICT` Already booked (ASG-502) 2026-10-14T19:00:00-05:00 to 2026-10-15T07:00:00-05:00, overlapping this shift. |
 | Tom Brennan (C-106) | `LICENSE_NOT_VALID_IN_STATE` RN license jurisdiction (CA) is not valid in TX; needs TX or COMPACT. |
+| James Okafor (C-102) | `CREDENTIAL_EXPIRED` ACLS expires 2026-10-10, before the shift ends on 2026-10-15. |
 | Aisha Rahman (C-105) | `INSUFFICIENT_EXPERIENCE` 1 years of experience; ICU requires 2. |
-| Robert Diaz (C-108) | `INACTIVE` Clinician status is inactive. |
+| Sofia Martinez (C-109) | `SCHEDULE_CONFLICT` Already booked (ASG-502) 2026-10-14T19:00:00-05:00 to 2026-10-15T07:00:00-05:00, overlapping this shift. |
 | Priya Patel (C-103) | `INSUFFICIENT_REST` Only 0.0h between this shift and booking ASG-501; St. Mary's Medical Center requires 10h of rest. |
+| Robert Diaz (C-108) | `INACTIVE` Clinician status is inactive. |
 
 ## Verification
 
@@ -84,19 +86,20 @@ All references were verified against tool evidence.
 ## Trace
 
 ```text
-[ 1] llm:model ok 1802ms | Planned: find_open_shifts
+[ 1] llm:model ok 2951ms | Planned: find_open_shifts
 [ 2] tool:find_open_shifts ok 0ms | {"facility": "St. Mary's", "unit": "ICU", "start_date": "2026-10-14", "shift_id": null}
-[ 3] llm:model ok 1011ms | Planned: search_facility_policies, search_clinicians
-[ 4] tool:search_facility_policies ok 10ms | {"facility_id": "FAC-001", "query": "ICU unit preferences, night shift arrival logistics, outreach rules", "top_k": 5}
-[ 5] tool:search_clinicians ok 10ms | {"shift_id": "SHF-1001", "query": "ICU RN night shift, critical care experience, night availability", "limit": 10}
-[ 6] llm:model ok 1370ms | Planned: evaluate_candidates
-[ 7] tool:evaluate_candidates ok 2ms | {"shift_id": "SHF-1001", "clinician_ids": ["C-102", "C-109", "C-106", "C-105", "C-104", "C-107", "C-101", "C-108", "C-103"]}
-[ 8] llm:model ok 2046ms | Planned: draft_outreach, draft_outreach
-[ 9] tool:draft_outreach ok 1ms | {"shift_id": "SHF-1001", "clinician_id": "C-101", "personal_note": "You look like a strong fit for this ICU night shift because you have 6 years in critical care, CCRN certification, and experience wi...
-[10] tool:draft_outreach ok 1ms | {"shift_id": "SHF-1001", "clinician_id": "C-107", "personal_note": "Your cardiovascular ICU background and 5 years of ICU experience fit this St. Mary\u2019s ICU night shift well. You prefer day shift...
-[11] llm:model ok 2677ms | Planned: submit_recommendation
-[12] validation:submit_recommendation ok 0ms | Submission accepted.
-[13] verification:grounding ok 1ms | 2 recommendation(s) verified; 0 issue(s) enforced.
+[ 3] llm:model ok 2210ms | Planned: search_facility_policies, search_facility_policies, search_clinicians
+[ 4] tool:search_facility_policies ok 36ms | {"facility_id": "FAC-001", "query": "ICU unit preferences for St. Mary's Medical Center, including preferred experience, certifications, patient types, and any special unit needs", "top_k": 4}
+[ 5] tool:search_facility_policies ok 24ms | {"facility_id": "FAC-001", "query": "night shift arrival logistics and outreach rules for clinicians at St. Mary's Medical Center", "top_k": 4}
+[ 6] tool:search_clinicians ok 19ms | {"shift_id": "SHF-1001", "query": "ICU night shift RN, preferences for ICU, critical care, ventilators, CRRT, titratable drips, cardiac surgery, and night availability", "limit": 10}
+[ 7] llm:model ok 1643ms | Planned: evaluate_candidates
+[ 8] tool:evaluate_candidates ok 4ms | {"shift_id": "SHF-1001", "clinician_ids": ["C-106", "C-102", "C-105", "C-109", "C-107", "C-101", "C-103", "C-104", "C-108"]}
+[ 9] llm:model ok 1983ms | Planned: draft_outreach, draft_outreach
+[10] tool:draft_outreach ok 2ms | {"shift_id": "SHF-1001", "clinician_id": "C-107", "personal_note": "We would love to have you on this shift. We think you would fit this unit well."}
+[11] tool:draft_outreach ok 1ms | {"shift_id": "SHF-1001", "clinician_id": "C-101", "personal_note": "We would love to have you on this shift. Thank you for considering this opportunity."}
+[12] llm:model ok 2842ms | Planned: submit_recommendation
+[13] validation:submit_recommendation ok 0ms | Submission accepted.
+[14] verification:grounding ok 1ms | 2 recommendation(s) verified; 0 issue(s) enforced.
 ```
 
-5 LLM calls, 6 tool calls, 15293 tokens, 9.0s.
+5 LLM calls, 7 tool calls, 16609 tokens, 11.7s.

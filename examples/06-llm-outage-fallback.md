@@ -12,14 +12,15 @@
 
 ### 1. Olivia Brown (C-112)
 
-Meets every Med-Surg requirement with 2 years of experience.
+Passed the recorded compliance checks for this shift. Recorded experience: 2 years.
 
 <details><summary>Outreach draft: Open Med-Surg day shift at Lakeside Community Hospital on Fri, Oct 16</summary>
 
 ```text
 Hi Olivia,
 
-Your experience and credentials match the requirements for this unit, and we would love to have you on this shift.
+We would love to have you on this shift.
+Your recorded experience: 2 years.
 
 Shift details
 - Facility: Lakeside Community Hospital (Denver, CO)
@@ -35,7 +36,7 @@ Staffing Operations Team
 
 ### 2. Ethan Nguyen (C-113)
 
-Meets every Med-Surg requirement with 6 years of experience.
+Passed the recorded compliance checks for this shift. Recorded experience: 6 years. BLS expires 2026-10-31, 15 days after the shift. Request a renewal.
 - **Warning:** BLS expires 2026-10-31, 15 days after the shift. Request a renewal.
 
 <details><summary>Outreach draft: Open Med-Surg day shift at Lakeside Community Hospital on Fri, Oct 16</summary>
@@ -43,7 +44,8 @@ Meets every Med-Surg requirement with 6 years of experience.
 ```text
 Hi Ethan,
 
-Your experience and credentials match the requirements for this unit, and we would love to have you on this shift.
+We would love to have you on this shift.
+Your recorded experience: 6 years.
 
 Shift details
 - Facility: Lakeside Community Hospital (Denver, CO)
@@ -73,7 +75,7 @@ Staffing Operations Team
 ## Trace
 
 ```text
-[ 1] llm:model FAILED 13ms | simulated LLM outage
+[ 1] llm:model FAILED 0ms | Provider failure (ConnectionError)
 [ 2] fallback:rules ok 1ms | LLM call failed (ConnectionError)
 ```
 

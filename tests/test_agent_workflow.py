@@ -13,7 +13,10 @@ from shift_assistant.retrieval.embedder import HashingEmbedder
 from tests.conftest import AssistantFactory, ai, make_settings, tool_call
 
 SUBMIT = "submit_recommendation"
-REQUEST = StaffingRequest(text="Two ICU nurses for the St. Mary's night shift on Oct 14, please.")
+REQUEST = StaffingRequest(
+    text="Two ICU nurses for the St. Mary's night shift on Oct 14, please.",
+    draft_outreach=False,
+)
 ICU_PROFILE = "FAC-001#icu-unit-profile"
 MARIA_DRAFT = "DRAFT-SHF-1001-C-101"
 ICU_POOL = ["C-101", "C-102", "C-103", "C-104", "C-105", "C-106", "C-107", "C-108", "C-109"]
@@ -51,9 +54,9 @@ def clarification() -> dict[str, Any]:
     }
 
 
-def research_steps() -> list[AIMessage]:
+def research_steps(*, outreach: bool = False) -> list[AIMessage]:
     """Typical ReAct steps: resolve the shift, retrieve policy, search and vet the pool, draft."""
-    return [
+    steps = [
         ai(tool_call("find_open_shifts", shift_id="SHF-1001")),
         ai(
             tool_call(
@@ -62,24 +65,37 @@ def research_steps() -> list[AIMessage]:
             tool_call("search_clinicians", shift_id="SHF-1001", query="ICU nights"),
         ),
         ai(tool_call("evaluate_candidates", shift_id="SHF-1001", clinician_ids=ICU_POOL)),
-        ai(
-            tool_call(
-                "draft_outreach",
-                shift_id="SHF-1001",
-                clinician_id="C-101",
-                personal_note="Your CCRN certification and CRRT experience fit this ICU well.",
-            )
-        ),
     ]
+    if outreach:
+        steps.append(
+            ai(
+                tool_call(
+                    "draft_outreach",
+                    shift_id="SHF-1001",
+                    clinician_id="C-101",
+                    personal_note="We would love to have you on this shift.",
+                ),
+                tool_call(
+                    "draft_outreach",
+                    shift_id="SHF-1001",
+                    clinician_id="C-104",
+                    personal_note="Thank you for considering this opportunity.",
+                ),
+            )
+        )
+    return steps
 
 
 def test_happy_path_produces_a_grounded_report(scripted_assistant: AssistantFactory) -> None:
     final = submission(
-        rec("C-101", (ICU_PROFILE,), MARIA_DRAFT), rec("C-104", rationale=DANIEL_RATIONALE)
+        rec("C-101", (ICU_PROFILE,), MARIA_DRAFT),
+        rec("C-104", draft="DRAFT-SHF-1001-C-104", rationale=DANIEL_RATIONALE),
     )
-    assistant, _ = scripted_assistant([*research_steps(), ai(tool_call(SUBMIT, **final))])
+    assistant, _ = scripted_assistant(
+        [*research_steps(outreach=True), ai(tool_call(SUBMIT, **final))]
+    )
 
-    report = assistant.run(REQUEST)
+    report = assistant.run(REQUEST.model_copy(update={"draft_outreach": True}))
 
     assert (report.mode, report.status) == (RunMode.AGENT, ReportStatus.READY)
     assert [r.clinician_name for r in report.recommendations] == ["Maria Santos", "Daniel Kim"]
@@ -97,14 +113,14 @@ def test_happy_path_produces_a_grounded_report(scripted_assistant: AssistantFact
     }
     assert [a.clinician_id for a in report.alternates] == ["C-107"]
     assert report.issues == []
-    assert (report.metrics.llm_calls, report.metrics.tool_calls) == (5, 5)
+    assert (report.metrics.llm_calls, report.metrics.tool_calls) == (5, 6)
 
 
 def test_hallucinated_and_ineligible_candidates_are_sent_back_for_repair(
     scripted_assistant: AssistantFactory,
 ) -> None:
     bad = submission(rec("C-999"), rec("C-102"), rec("C-101"))
-    good = submission(rec("C-101"))
+    good = submission(rec("C-101"), rec("C-107"))
     assistant, model = scripted_assistant(
         [*research_steps(), ai(tool_call(SUBMIT, **bad)), ai(tool_call(SUBMIT, **good))]
     )
@@ -115,9 +131,9 @@ def test_hallucinated_and_ineligible_candidates_are_sent_back_for_repair(
     assert isinstance(feedback, ToolMessage) and feedback.status == "error"
     assert "C-999 was not vetted" in str(feedback.content)
     assert "C-102 is not eligible" in str(feedback.content)
-    assert [r.clinician_id for r in report.recommendations] == ["C-101"]
-    assert [a.clinician_id for a in report.alternates] == ["C-104", "C-107"]  # not shortlisted
-    assert report.status is ReportStatus.PARTIAL  # 1 candidate for 2 open positions
+    assert [r.clinician_id for r in report.recommendations] == ["C-101", "C-107"]
+    assert [a.clinician_id for a in report.alternates] == ["C-104"]
+    assert report.status is ReportStatus.READY
     assert [e.ok for e in report.trace if e.kind == "validation"] == [False, True]
 
 
@@ -135,7 +151,12 @@ def test_ungrounded_content_is_stripped_when_repairs_run_out(
     assert [r.clinician_id for r in report.recommendations] == ["C-101"]
     assert report.recommendations[0].citations == []
     assert report.recommendations[0].outreach is None
-    assert {i.code for i in report.issues} == {"NOT_VETTED", "UNKNOWN_CITATION", "INVALID_DRAFT"}
+    assert {i.code for i in report.issues} == {
+        "NOT_VETTED",
+        "UNKNOWN_CITATION",
+        "INVALID_DRAFT",
+        "SHORTLIST_INCOMPLETE",
+    }
 
 
 def test_unparseable_answer_falls_back_to_rules(scripted_assistant: AssistantFactory) -> None:
@@ -205,7 +226,7 @@ def test_clarification_question_is_returned(scripted_assistant: AssistantFactory
         "SHF-1003, ICU day shift at St. Mary's Medical Center, "
         "Fri, Oct 16, 2026, 7:00 AM to Fri, Oct 16, 2026, 7:00 PM (America/Chicago)."
     )
-    assert report.agent_notes == clarification()["summary"]
+    assert report.agent_notes is None  # unverified model explanations are not published
 
 
 def test_clarification_without_matching_shifts_says_so(
@@ -368,7 +389,7 @@ def test_another_facilitys_policy_cannot_be_cited(scripted_assistant: AssistantF
     report = assistant.run(REQUEST)
 
     assert report.recommendations[0].citations == []
-    assert [i.code for i in report.issues] == ["OTHER_FACILITY_CITATION"]
+    assert [i.code for i in report.issues] == ["OTHER_FACILITY_CITATION", "SHORTLIST_INCOMPLETE"]
 
 
 def test_rationale_must_mention_the_credential_warning(

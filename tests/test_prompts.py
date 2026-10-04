@@ -18,7 +18,8 @@ def test_preference_and_willingness_stay_distinct_in_every_generated_text() -> N
     assert "Never turn willingness into a preference" in system
     assert "never describe it as unwillingness" in system
     assert "make no claim about it" in system  # unknown preference: omit the claim
-    assert "keeping preference and willingness distinct" in note
+    assert "exact friendly sentences" in note
+    assert "exact profile preferences" in note
 
 
 def test_clarifications_must_state_dates_accurately() -> None:

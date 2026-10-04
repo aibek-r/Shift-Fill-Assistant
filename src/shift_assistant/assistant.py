@@ -13,7 +13,14 @@ from shift_assistant.agent.prompts import build_initial_messages
 from shift_assistant.agent.state import AgentState, initial_state
 from shift_assistant.agent.submission import submission_tool_schema
 from shift_assistant.config import Settings
-from shift_assistant.contracts import RunMetrics, StaffingReport, StaffingRequest, TraceEvent
+from shift_assistant.contracts import (
+    IssueSeverity,
+    RunMetrics,
+    StaffingReport,
+    StaffingRequest,
+    TraceEvent,
+    VerificationIssue,
+)
 from shift_assistant.domain.eligibility import EligibilityEngine
 from shift_assistant.reliability.fallback import DeterministicFallback
 from shift_assistant.repository import StaffingRepository
@@ -74,7 +81,24 @@ class ShiftFillAssistant:
             output_tokens=sum(e.output_tokens or 0 for e in trace),
             duration_ms=round((time.perf_counter() - started) * 1000),
         )
-        return final["report"].model_copy(update={"trace": trace, "metrics": metrics})
+        report = final["report"]
+        policy_issues = (
+            [
+                VerificationIssue(
+                    severity=IssueSeverity.WARNING, code="POLICY_CONTEXT_MISSING", message=warning
+                )
+                for warning in self.toolkit.policy_warnings(report.shift.facility_id)
+            ]
+            if report.shift
+            else []
+        )
+        return report.model_copy(
+            update={
+                "trace": trace,
+                "metrics": metrics,
+                "issues": [*report.issues, *policy_issues],
+            }
+        )
 
     def revise_outreach(
         self, shift_id: str, clinician_id: str, personal_note: str

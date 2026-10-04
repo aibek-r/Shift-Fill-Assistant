@@ -28,6 +28,7 @@ from shift_assistant.repository import StaffingRepository
 from shift_assistant.retrieval.embedder import Embedder, create_embedder
 from shift_assistant.retrieval.knowledge import GLOBAL_SCOPE
 from shift_assistant.review import DraftStatus, OutreachReview
+from shift_assistant.tools.facts import FRIENDLY_NOTES
 from shift_assistant.tools.outreach import format_local_datetime, unit_label
 from shift_assistant.tools.schemas import PolicyExcerpt, ShiftSummary
 
@@ -80,7 +81,7 @@ MODE_LABELS = {
         "blue",
         "smart_toy",
         "AI agent",
-        "The LLM planned, ranked and wrote the explanations. Rules decided compliance, and every "
+        "The LLM planned and ranked. Code rendered recorded facts and decided compliance. Every "
         "referenced clinician, policy and draft was checked against tool evidence.",
     ),
     RunMode.FALLBACK: (
@@ -170,6 +171,11 @@ def main() -> None:
         render_report(report, review, assistant)
 
 
+def clear_result() -> None:
+    st.session_state.pop("report", None)
+    st.session_state.pop("review", None)
+
+
 def render_sidebar() -> tuple[bool, str | None]:
     with st.sidebar:
         if not Settings().llm_enabled:
@@ -185,6 +191,7 @@ def render_sidebar() -> tuple[bool, str | None]:
             "Shift",
             options=[None, *labels],
             format_func=lambda sid: "Let the agent find it" if sid is None else labels[sid],
+            on_change=clear_result,
         )
 
         st.header("Examples")
@@ -199,6 +206,7 @@ def render_sidebar() -> tuple[bool, str | None]:
             simulate_outage = st.toggle(
                 "Simulate LLM outage",
                 help="Every model call fails, so you can see the deterministic fallback.",
+                on_change=clear_result,
             )
     return simulate_outage, selected
 
@@ -212,7 +220,7 @@ def render_header() -> None:
             "double-booking and rest time are checked by deterministic code, never by the model.\n"
             "- **References are verified.** Every clinician, policy citation and draft in the "
             "answer is checked against tool evidence before it reaches you (see Technical "
-            "details). Explanations are written by the model.\n"
+            "details). Candidate facts and explanations are rendered from records.\n"
             "- **Nothing is sent.** A coordinator reviews, edits and approves each outreach "
             "message; delivery is simulated in this demo."
         )
@@ -232,6 +240,7 @@ def render_request_form(selected_shift: str | None) -> StaffingRequest | None:
             st.caption("or press **Ctrl+Enter** (**⌘+Enter** on Mac)")
     if not submitted:
         return None
+    clear_result()
     if not text.strip():
         st.warning("Enter a staffing request first.")
         return None
@@ -273,7 +282,7 @@ def render_report(
     if report.coverage is None:
         # Nothing was evaluated (a clarifying question or a failed run), so zero counts and
         # empty candidate tabs would only suggest a search that never happened.
-        render_technical_details(report)
+        render_technical_details(report, review)
         return
     if report.shift:
         render_shift_overview(report.shift)
@@ -310,7 +319,7 @@ def render_report(
                 [r.message for r in blocked.reasons],
             )
 
-    render_technical_details(report)
+    render_technical_details(report, review)
 
 
 def status_message(report: StaffingReport) -> str:
@@ -327,6 +336,12 @@ def status_message(report: StaffingReport) -> str:
     if report.status not in (ReportStatus.READY, ReportStatus.PARTIAL) or report.shift is None:
         return STATUS_MESSAGES.get(report.status, "")
     recommended, positions = len(report.recommendations), report.shift.positions_open
+    if report.request.requested_count is not None:
+        target = report.request.requested_count
+        return (
+            f"{recommended} of {target} requested clinicians shortlisted; "
+            f"{plural(positions, 'open position')}. Human review required."
+        )
     if recommended == 0:
         alternates = plural(len(report.alternates), "eligible alternate")
         message = f"No one shortlisted yet; {alternates} to review"
@@ -409,7 +424,7 @@ def vetting_note(report: StaffingReport) -> str:
     return "Every candidate in the shift's pool was evaluated."
 
 
-def render_technical_details(report: StaffingReport) -> None:
+def render_technical_details(report: StaffingReport, review: OutreachReview) -> None:
     with st.expander("Technical details", icon=":material/build:"):
         verification, trace, raw = st.tabs(["Verification", "Trace", "JSON"])
         with verification:
@@ -428,7 +443,7 @@ def render_technical_details(report: StaffingReport) -> None:
             cols[3].metric("Output tokens", f"{m.output_tokens:,}")
             cols[4].metric("Elapsed time (s)", f"{m.duration_ms / 1000:.1f}")
         with raw:
-            payload = report.model_dump_json(indent=2)
+            payload = review.export_report(report).model_dump_json(indent=2)
             st.download_button("Download JSON", payload, "staffing_report.json", "application/json")
             st.json(payload, expanded=False)
 
@@ -481,9 +496,10 @@ def render_outreach(review: OutreachReview, draft_id: str, assistant: ShiftFillA
         st.code(entry.draft.body, language=None, wrap_lines=True)
 
         if entry.status is DraftStatus.EDITING:
+            st.caption("Use 1-3 of these sentences. Recorded facts are added automatically:")
+            st.write(" ".join(FRIENDLY_NOTES))
             st.text_area(
                 "Personal note",
-                value=entry.draft.personal_note,
                 key=f"note-{key}",
                 height=110,
                 help="Shift details, credential reminders and the reply deadline come from the "
@@ -545,6 +561,7 @@ def approve_draft(run_id: str, draft_id: str) -> None:
 
 def start_edit(run_id: str, draft_id: str) -> None:
     if (review := current_review(run_id)) is not None:
+        st.session_state[f"note-{run_id}-{draft_id}"] = review[draft_id].draft.personal_note
         review.start_editing(draft_id)
 
 

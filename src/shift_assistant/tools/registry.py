@@ -72,8 +72,8 @@ class ToolRegistry:
             return failure(f"Invalid arguments for {name}: {describe_validation_error(exc)}")
         except ToolInputError as exc:
             return failure(str(exc))
-        except Exception:  # unexpected bug: log it, keep the agent alive, leak no internals
-            logger.exception("Tool %s failed", name)
+        except Exception as exc:  # exception text can contain secrets; log only its class
+            logger.warning("Tool %s failed (%s)", name, type(exc).__name__)
             return failure(f"{name} failed unexpectedly. Try different arguments.")
 
         content = fit_to_limit(output.result, self._output_char_limit)

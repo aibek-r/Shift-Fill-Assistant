@@ -4,9 +4,9 @@ The same check runs twice. During validation its messages go back to the model s
 the answer. During verification its actions are enforced, so ungrounded content never reaches a
 coordinator even if the model ran out of repair attempts.
 
-It verifies references (shift, clinicians, citations, drafts), eligibility and vetting coverage.
-Free-text explanations are not fact-checked; the one text check is that every credential warning
-is mentioned in the rationale.
+It verifies references, pinned shift, shortlist limits, eligibility and vetting coverage.
+The warning wording check helps the model repair its internal justification. The report renderer
+uses recorded facts instead of displaying that free text.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from shift_assistant.agent.submission import AgentSubmission, RecommendedCandidate, SubmissionStatus
+from shift_assistant.contracts import StaffingRequest
 from shift_assistant.domain.models import CredentialType
 from shift_assistant.retrieval.knowledge import GLOBAL_SCOPE
 from shift_assistant.tools.evidence import EvidenceLedger
@@ -42,11 +43,31 @@ class GroundingProblem:
 
 
 def check_grounding(
-    submission: AgentSubmission, ledger: EvidenceLedger, max_recommendations: int
+    submission: AgentSubmission,
+    ledger: EvidenceLedger,
+    max_recommendations: int,
+    request: StaffingRequest | None = None,
 ) -> list[GroundingProblem]:
     if submission.status is SubmissionStatus.NEEDS_CLARIFICATION:
+        if request is not None and request.shift_id in ledger.shifts:
+            return [
+                GroundingProblem(
+                    code="PINNED_SHIFT_ALREADY_RESOLVED",
+                    message=f"Pinned shift {request.shift_id} is already resolved. Complete that "
+                    "shift's shortlist; do not ask to switch to another shift.",
+                    action=GroundingAction.REJECT_SUBMISSION,
+                )
+            ]
         return []
     shift_id = submission.shift_id or ""
+    if request is not None and request.shift_id and shift_id != request.shift_id:
+        return [
+            GroundingProblem(
+                code="PINNED_SHIFT_MISMATCH",
+                message=f"Use the coordinator's pinned shift {request.shift_id}, not {shift_id}.",
+                action=GroundingAction.REJECT_SUBMISSION,
+            )
+        ]
     if shift_id not in ledger.shifts:
         return [
             GroundingProblem(
@@ -57,6 +78,11 @@ def check_grounding(
         ]
 
     problems: list[GroundingProblem] = []
+    target = (
+        request.shortlist_target(ledger.shifts[shift_id].positions_open)
+        if request
+        else max_recommendations
+    )
     if shift_id not in ledger.candidate_pools:
         problems.append(
             GroundingProblem(
@@ -90,9 +116,13 @@ def check_grounding(
             problems.append(_drop(index, "DUPLICATE_CANDIDATE", f"{cid} is recommended twice."))
             continue
         seen.add(cid)
-        if index >= max_recommendations:
+        if index >= min(target, max_recommendations):
             problems.append(
-                _drop(index, "TOO_MANY_CANDIDATES", f"At most {max_recommendations} allowed.")
+                _drop(
+                    index,
+                    "TOO_MANY_CANDIDATES",
+                    f"At most {min(target, max_recommendations)} allowed for this request.",
+                )
             )
             continue
         if evaluation is None:
@@ -143,6 +173,40 @@ def check_grounding(
                         index=index,
                     )
                 )
+        elif request is not None and request.draft_outreach:
+            problems.append(
+                GroundingProblem(
+                    code="MISSING_OUTREACH",
+                    message=f"Draft outreach for {cid} before submitting.",
+                    action=GroundingAction.FLAG,
+                    index=index,
+                )
+            )
+    if request is not None:
+        dropped = {p.index for p in problems if p.action is GroundingAction.DROP_RECOMMENDATION}
+        verified_count = len(submission.recommendations) - len(dropped)
+        eligible = sum(e.eligible for e in ledger.evaluations_for(shift_id))
+        attainable = min(target, eligible, max_recommendations)
+        if verified_count < attainable:
+            problems.append(
+                GroundingProblem(
+                    code="SHORTLIST_INCOMPLETE",
+                    message=(
+                        f"Requested {target} clinicians; {eligible} vetted candidates "
+                        f"are eligible. Return {attainable} verified recommendations "
+                        f"(currently {verified_count})."
+                    ),
+                    action=GroundingAction.FLAG,
+                )
+            )
+        if target > max_recommendations:
+            problems.append(
+                GroundingProblem(
+                    code="SHORTLIST_LIMIT",
+                    message=f"Requested {target}; configured limit is {max_recommendations}.",
+                    action=GroundingAction.FLAG,
+                )
+            )
     return problems
 
 

@@ -1,8 +1,7 @@
 """Turns a validated agent submission into the final report, enforcing grounding.
 
-Division of labour: the model contributes judgement (which candidates, in what order, why).
-Every fact in the report (names, warnings, citation text, outreach) comes from the evidence
-ledger, which only tools write.
+The model chooses candidates and their order. Candidate explanations are rendered from recorded
+facts; arbitrary model rationales and summary notes are never promoted to report evidence.
 """
 
 from __future__ import annotations
@@ -33,6 +32,7 @@ from shift_assistant.reliability.reporting import (
     fill_status,
 )
 from shift_assistant.tools.evidence import EvidenceLedger
+from shift_assistant.tools.facts import candidate_rationale
 
 
 def build_agent_report(
@@ -41,23 +41,30 @@ def build_agent_report(
     ledger: EvidenceLedger,
     max_recommendations: int,
 ) -> StaffingReport:
+    problems = check_grounding(submission, ledger, max_recommendations, request)
+    if any(p.action is GroundingAction.REJECT_SUBMISSION for p in problems):
+        return StaffingReport(
+            request=request,
+            status=ReportStatus.FAILED,
+            mode=RunMode.AGENT,
+            summary="The agent's answer could not be verified against the requested shift.",
+            issues=[_issue(p) for p in problems],
+        )
     if submission.status is SubmissionStatus.NEEDS_CLARIFICATION:
         return StaffingReport(
             request=request,
             status=ReportStatus.NEEDS_CLARIFICATION,
             mode=RunMode.AGENT,
             # The model's own explanation can misdescribe dates, so the summary states only the
-            # shifts find_open_shifts returned; the model's text is kept as notes.
+            # shifts find_open_shifts returned. Its free-text explanation is omitted.
             summary=clarification_summary(
                 list(ledger.shifts.values()), submission.clarification_question or ""
             ),
-            agent_notes=submission.summary,
             clarification_question=submission.clarification_question,
         )
 
-    problems = check_grounding(submission, ledger, max_recommendations)
     shift = ledger.shifts.get(submission.shift_id or "")
-    if shift is None or any(p.action is GroundingAction.REJECT_SUBMISSION for p in problems):
+    if shift is None:
         return StaffingReport(
             request=request,
             status=ReportStatus.FAILED,
@@ -79,14 +86,18 @@ def build_agent_report(
             continue
         dropped_citations = {p.citation_id for p in by_index[index]}
         draft = None
-        if rec.draft_id is not None and GroundingAction.DROP_DRAFT not in actions:
+        if (
+            request.draft_outreach
+            and rec.draft_id is not None
+            and GroundingAction.DROP_DRAFT not in actions
+        ):
             draft = ledger.drafts.get(rec.draft_id)
         recommendations.append(
             CandidateRecommendation(
                 rank=len(recommendations) + 1,
                 clinician_id=evaluation.clinician_id,
                 clinician_name=evaluation.clinician_name,
-                rationale=rec.rationale,
+                rationale=candidate_rationale(evaluation),
                 warnings=evaluation.warnings,
                 credentials=evaluation.credentials,
                 citations=[
@@ -110,11 +121,13 @@ def build_agent_report(
     )
     return StaffingReport(
         request=request,
-        status=fill_status(len(recommendations), coverage.eligible, shift.positions_open),
+        status=fill_status(
+            len(recommendations), coverage.eligible, request.shortlist_target(shift.positions_open)
+        ),
         mode=RunMode.AGENT,
-        summary=coverage_summary(coverage, shift.positions_open),
-        # The notes describe the agent's own shortlist; once verification changes it they are stale.
-        agent_notes=None if removed else submission.summary,
+        summary=coverage_summary(coverage, shift.positions_open, request.requested_count),
+        # Model prose may contain unsupported claims even when every reference is valid.
+        agent_notes=None,
         shift=shift,
         recommendations=recommendations,
         alternates=eligible_alternates,

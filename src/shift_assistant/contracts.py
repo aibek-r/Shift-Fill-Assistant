@@ -5,9 +5,10 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from shift_assistant.domain.eligibility import CredentialCheck, Finding
+from shift_assistant.intent import requested_count, wants_outreach
 from shift_assistant.tools.schemas import OutreachDraft, PolicyExcerpt, ShiftSummary
 
 
@@ -18,11 +19,25 @@ class StaffingRequest(BaseModel):
     shift_id: str | None = Field(
         default=None, description="Optional shift the coordinator pinned in the UI."
     )
+    requested_count: int | None = Field(default=None, ge=1, le=100)
+    draft_outreach: bool = True
+
+    @model_validator(mode="before")
+    @classmethod
+    def extract_explicit_intent(cls, value: object) -> object:
+        if isinstance(value, dict) and isinstance(value.get("text"), str):
+            value = dict(value)
+            value.setdefault("requested_count", requested_count(value["text"]))
+            value.setdefault("draft_outreach", wants_outreach(value["text"]))
+        return value
+
+    def shortlist_target(self, positions_open: int) -> int:
+        return self.requested_count or positions_open
 
 
 class ReportStatus(StrEnum):
-    READY = "ready"  # enough eligible candidates to cover every open position
-    PARTIAL = "partial"  # some, but fewer than the open positions
+    READY = "ready"  # requested shortlist complete; nobody is booked
+    PARTIAL = "partial"  # fewer verified recommendations than requested
     NO_ELIGIBLE_CANDIDATES = "no_eligible_candidates"
     NEEDS_CLARIFICATION = "needs_clarification"
     FAILED = "failed"
@@ -113,6 +128,16 @@ class RunMetrics(BaseModel):
     duration_ms: int = 0
 
 
+class OutreachApproval(BaseModel):
+    draft_id: str
+    status: Literal["pending", "editing", "approved"]
+
+
+class OutreachReviewSnapshot(BaseModel):
+    run_id: str
+    approvals: list[OutreachApproval]
+
+
 class StaffingReport(BaseModel):
     request: StaffingRequest
     status: ReportStatus
@@ -120,7 +145,7 @@ class StaffingReport(BaseModel):
     summary: str = Field(description="Built by code from the verified report, except when asking.")
     agent_notes: str | None = Field(
         default=None,
-        description="The agent's ranking notes; dropped when verification changed its shortlist.",
+        description="Reserved for reviewed notes. Unverified model prose is not copied here.",
     )
     shift: ShiftSummary | None = None
     recommendations: list[CandidateRecommendation] = []
@@ -131,3 +156,4 @@ class StaffingReport(BaseModel):
     issues: list[VerificationIssue] = []
     trace: list[TraceEvent] = []
     metrics: RunMetrics = RunMetrics()
+    outreach_review: OutreachReviewSnapshot | None = None

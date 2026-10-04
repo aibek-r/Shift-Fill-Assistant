@@ -52,11 +52,11 @@ def test_agent_summary_counts_come_from_verified_evaluations(
 
     report = assistant.run(REQUEST)
 
-    assert report.summary == FULL_POOL_SUMMARY
+    assert report.summary == FULL_POOL_SUMMARY + " Requested shortlist: 2 of 2 clinicians."
     assert_counts_match_lists(report)
     assert report.coverage is not None and report.coverage.full_pool_evaluated
     assert [a.clinician_id for a in report.alternates] == ["C-104"]
-    assert report.agent_notes == "Only two clinicians were eligible."  # kept apart, labelled
+    assert report.agent_notes is None  # false model counts are not published
 
 
 def test_fallback_summary_uses_the_same_counts() -> None:
@@ -127,6 +127,7 @@ def test_summary_is_rebuilt_after_verification_removes_a_recommendation(
     assert report.summary.endswith(
         "1 eligible clinician shortlisted for 2 open positions; 1 position still without a "
         "candidate; 2 eligible alternates were not shortlisted. "
+        "Requested shortlist: 1 of 2 clinicians; 1 fewer than requested. "
         "Verification removed 1 recommendation that failed evidence checks."
     )
     assert report.agent_notes is None  # described a shortlist that no longer exists

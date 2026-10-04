@@ -1,4 +1,4 @@
-"""Outreach rendering: facts come from the system of record, only the personal note from the LLM."""
+"""Outreach rendering: recorded facts and a validated, neutral friendly note."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 
 from shift_assistant.domain.eligibility import CheckCode, Finding
 from shift_assistant.domain.models import Clinician, Unit
+from shift_assistant.tools.facts import preference_quotes
 from shift_assistant.tools.schemas import OutreachDraft, ShiftSummary
 
 RESPONSE_WINDOW_BEFORE_SHIFT = timedelta(hours=48)
@@ -33,6 +34,16 @@ def render_outreach(
         f"Hi {clinician.first_name},",
         "",
         personal_note.strip(),
+        f"Your recorded experience: {clinician.years_experience} years.",
+        *(
+            [
+                "Your profile states: "
+                + "; ".join(f"“{q}”" for q in preference_quotes(clinician.profile))
+                + "."
+            ]
+            if preference_quotes(clinician.profile)
+            else []
+        ),
         "",
         "Shift details",
         f"- Facility: {shift.facility_name} ({shift.location})",

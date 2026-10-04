@@ -85,10 +85,19 @@ class _Nodes:
         try:
             response = self._deps.model.invoke(state["messages"])
         except Exception as exc:  # provider error after SDK retries: degrade, don't crash
-            logger.exception("LLM call failed")
+            logger.warning("LLM call failed (%s)", type(exc).__name__)
             return {
                 "failure": f"LLM call failed ({type(exc).__name__})",
-                "trace": [_event(step, "llm", "model", started, ok=False, detail=str(exc)[:300])],
+                "trace": [
+                    _event(
+                        step,
+                        "llm",
+                        "model",
+                        started,
+                        ok=False,
+                        detail=f"Provider failure ({type(exc).__name__})",
+                    )
+                ],
             }
         if not isinstance(response, AIMessage):
             return {"failure": f"unexpected model response type {type(response).__name__}"}
@@ -127,8 +136,20 @@ class _Nodes:
                     "results are back. Call it again by itself."
                 )
                 ok = False
+            elif state["request"].shift_id and call["args"].get("shift_id") not in (
+                None,
+                state["request"].shift_id,
+            ):
+                content = f"ERROR: Use pinned shift {state['request'].shift_id}."
+                ok = False
+            elif call["name"] == "draft_outreach" and not state["request"].draft_outreach:
+                content = "ERROR: The coordinator requested no outreach drafts."
+                ok = False
             else:
-                execution = self._deps.tools.execute(call["name"], call["args"])
+                args = dict(call["args"])
+                if call["name"] == "find_open_shifts" and state["request"].shift_id:
+                    args["shift_id"] = state["request"].shift_id
+                execution = self._deps.tools.execute(call["name"], args)
                 ledger = ledger.merge(execution.evidence)
                 content, ok = execution.content, execution.ok
             messages.append(_tool_message(call["id"], call["name"], content, ok))
@@ -161,7 +182,10 @@ class _Nodes:
                 errors = [f"Invalid submission: {describe_validation_error(exc)}"]
             else:
                 problems = check_grounding(
-                    submission, state["ledger"], self._settings.max_recommendations
+                    submission,
+                    state["ledger"],
+                    self._settings.max_recommendations,
+                    state["request"],
                 )
                 errors = [p.message for p in problems]
                 rejected = any(p.action is GroundingAction.REJECT_SUBMISSION for p in problems)

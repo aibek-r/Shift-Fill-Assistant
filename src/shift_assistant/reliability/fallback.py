@@ -25,13 +25,10 @@ from shift_assistant.reliability.reporting import (
 )
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.tools.evidence import EvidenceLedger
-from shift_assistant.tools.outreach import unit_label
+from shift_assistant.tools.facts import DEFAULT_NOTE, candidate_rationale
 from shift_assistant.tools.toolkit import StaffingToolkit
 
-FALLBACK_NOTE = (
-    "Your experience and credentials match the requirements for this unit, and we would love "
-    "to have you on this shift."
-)
+FALLBACK_NOTE = DEFAULT_NOTE
 
 
 class DeterministicFallback:
@@ -69,21 +66,21 @@ class DeterministicFallback:
             (e for e in evaluations if e.eligible),
             key=lambda e: (len(e.warnings), -clinicians[e.clinician_id].years_experience),
         )
-        shortlist = eligible[: min(shift.positions_open, self._max_recommendations)]
+        target = request.shortlist_target(shift.positions_open)
+        shortlist = eligible[: min(target, self._max_recommendations)]
         recommendations = [
             CandidateRecommendation(
                 rank=rank,
                 clinician_id=e.clinician_id,
                 clinician_name=e.clinician_name,
-                rationale=(
-                    f"Meets every {unit_label(shift.unit)} requirement with "
-                    f"{clinicians[e.clinician_id].years_experience} years of experience."
-                ),
+                rationale=candidate_rationale(e),
                 warnings=e.warnings,
                 credentials=e.credentials,
                 outreach=self._toolkit.create_draft(
                     shift, clinicians[e.clinician_id], FALLBACK_NOTE, e
-                ),
+                )
+                if request.draft_outreach
+                else None,
             )
             for rank, e in enumerate(shortlist, start=1)
         ]
@@ -94,10 +91,10 @@ class DeterministicFallback:
         )
         return StaffingReport(
             request=request,
-            status=fill_status(len(recommendations), len(eligible), shift.positions_open),
+            status=fill_status(len(recommendations), len(eligible), target),
             mode=RunMode.FALLBACK,
             summary=(
-                f"{coverage_summary(coverage, shift.positions_open)} "
+                f"{coverage_summary(coverage, shift.positions_open, request.requested_count)} "
                 "Ranked by credential warnings, then experience."
             ),
             shift=self._toolkit.summarize(shift),
@@ -105,7 +102,23 @@ class DeterministicFallback:
             alternates=eligible_alternates,
             excluded=excluded,
             coverage=coverage,
-            issues=[issue],
+            issues=[
+                issue,
+                *(
+                    [
+                        VerificationIssue(
+                            severity=IssueSeverity.WARNING,
+                            code="SHORTLIST_LIMIT",
+                            message=(
+                                f"Requested {target}; configured limit is "
+                                f"{self._max_recommendations}."
+                            ),
+                        )
+                    ]
+                    if target > self._max_recommendations
+                    else []
+                ),
+            ],
         )
 
     def _resolve_shift(self, request: StaffingRequest, ledger: EvidenceLedger) -> Shift | None:

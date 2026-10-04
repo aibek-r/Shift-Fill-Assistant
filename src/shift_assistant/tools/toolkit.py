@@ -16,6 +16,7 @@ from shift_assistant.domain.models import Clinician, Facility, Shift
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.retrieval.knowledge import ClinicianProfileIndex, PolicyKnowledgeBase
 from shift_assistant.tools.evidence import EvidenceLedger
+from shift_assistant.tools.facts import preference_quotes, validate_personal_note
 from shift_assistant.tools.outreach import render_outreach
 from shift_assistant.tools.schemas import (
     CandidateEvaluation,
@@ -96,8 +97,13 @@ class StaffingToolkit:
             )
             for hit in self._policies.search(args.facility_id, args.query, top_k=args.top_k)
         ]
+        warnings = self.policy_warnings(args.facility_id)
+        if not excerpts:
+            warnings.append(
+                "No relevant policy excerpts were retrieved. Review facility context manually."
+            )
         return ToolOutput(
-            SearchFacilityPoliciesResult(excerpts=excerpts),
+            SearchFacilityPoliciesResult(excerpts=excerpts, warnings=warnings),
             EvidenceLedger.of(policy_excerpts=excerpts),
         )
 
@@ -172,6 +178,8 @@ class StaffingToolkit:
             blockers=result.blockers,
             warnings=result.warnings,
             credentials=result.credentials,
+            years_experience=clinician.years_experience,
+            preference_quotes=preference_quotes(clinician.profile),
         )
 
     def create_draft(
@@ -181,7 +189,23 @@ class StaffingToolkit:
         personal_note: str,
         evaluation: CandidateEvaluation,
     ) -> OutreachDraft:
+        try:
+            validate_personal_note(personal_note)
+        except ValueError as exc:
+            raise ToolInputError(str(exc)) from exc
         return render_outreach(self.summarize(shift), clinician, personal_note, evaluation.warnings)
+
+    def policy_warnings(self, facility_id: str) -> list[str]:
+        missing = self._policies.missing_scopes(facility_id)
+        return (
+            [
+                f"Policy context is missing or empty for {', '.join(missing)}. "
+                "Eligibility uses recorded rules; verify facility preferences and "
+                "procedures manually."
+            ]
+            if missing
+            else []
+        )
 
     # --- Helpers -----------------------------------------------------------------------------
 

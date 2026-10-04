@@ -28,7 +28,8 @@ and the shift period (day or night).
 4. Vet EVERY candidate returned by search_clinicians with evaluate_candidates, in one call. Its \
 verdicts are final: never recommend a clinician it marks ineligible.
 5. Once the evaluate_candidates results are back, draft outreach with draft_outreach for each \
-clinician you recommend, unless the coordinator asked you not to.
+clinician you recommend, unless the coordinator asked you not to. Its personal_note must select \
+the exact approved friendly sentences in the tool schema. Code adds recorded facts separately.
 6. Finish by calling submit_recommendation on its own.
 
 Rules
@@ -60,7 +61,17 @@ def build_initial_messages(
 ) -> list[BaseMessage]:
     user_turn = f"Staffing request from a coordinator:\n<request>\n{request.text}\n</request>"
     if request.shift_id:
-        user_turn += f"\nThe coordinator pinned shift {request.shift_id}; use that shift."
+        user_turn += (
+            f"\nThe coordinator pinned shift {request.shift_id}; use that shift. "
+            "The pin overrides conflicting shift text. Once the pinned shift is resolved, "
+            "complete its shortlist without asking to switch shifts."
+        )
+    if request.requested_count is not None:
+        user_turn += (
+            f"\nRequired shortlist size: {request.requested_count} "
+            "(subject to eligibility and the configured limit)."
+        )
+    user_turn += f"\nOutreach drafts required: {'yes' if request.draft_outreach else 'no'}."
     return [
         SystemMessage(
             SYSTEM_PROMPT.format(today=today.isoformat(), max_recommendations=max_recommendations)

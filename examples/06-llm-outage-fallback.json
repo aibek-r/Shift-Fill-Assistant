@@ -1,7 +1,9 @@
 {
   "request": {
     "text": "Fill the Lakeside med-surg day shift on October 16.",
-    "shift_id": "SHF-2001"
+    "shift_id": "SHF-2001",
+    "requested_count": null,
+    "draft_outreach": true
   },
   "status": "ready",
   "mode": "fallback",
@@ -25,7 +27,7 @@
       "rank": 1,
       "clinician_id": "C-112",
       "clinician_name": "Olivia Brown",
-      "rationale": "Meets every Med-Surg requirement with 2 years of experience.",
+      "rationale": "Passed the recorded compliance checks for this shift. Recorded experience: 2 years.",
       "warnings": [],
       "credentials": [
         {
@@ -46,16 +48,16 @@
         "draft_id": "DRAFT-SHF-2001-C-112",
         "shift_id": "SHF-2001",
         "clinician_id": "C-112",
-        "personal_note": "Your experience and credentials match the requirements for this unit, and we would love to have you on this shift.",
+        "personal_note": "We would love to have you on this shift.",
         "subject": "Open Med-Surg day shift at Lakeside Community Hospital on Fri, Oct 16",
-        "body": "Hi Olivia,\n\nYour experience and credentials match the requirements for this unit, and we would love to have you on this shift.\n\nShift details\n- Facility: Lakeside Community Hospital (Denver, CO)\n- Unit: Med-Surg\n- Time: Fri, Oct 16, 2026, 7:00 AM to Fri, Oct 16, 2026, 7:00 PM (America/Denver)\n\nPlease reply by Wed, Oct 14, 2026, 7:00 AM (America/Denver) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
+        "body": "Hi Olivia,\n\nWe would love to have you on this shift.\nYour recorded experience: 2 years.\n\nShift details\n- Facility: Lakeside Community Hospital (Denver, CO)\n- Unit: Med-Surg\n- Time: Fri, Oct 16, 2026, 7:00 AM to Fri, Oct 16, 2026, 7:00 PM (America/Denver)\n\nPlease reply by Wed, Oct 14, 2026, 7:00 AM (America/Denver) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
       }
     },
     {
       "rank": 2,
       "clinician_id": "C-113",
       "clinician_name": "Ethan Nguyen",
-      "rationale": "Meets every Med-Surg requirement with 6 years of experience.",
+      "rationale": "Passed the recorded compliance checks for this shift. Recorded experience: 6 years. BLS expires 2026-10-31, 15 days after the shift. Request a renewal.",
       "warnings": [
         {
           "code": "CREDENTIAL_EXPIRING_SOON",
@@ -82,9 +84,9 @@
         "draft_id": "DRAFT-SHF-2001-C-113",
         "shift_id": "SHF-2001",
         "clinician_id": "C-113",
-        "personal_note": "Your experience and credentials match the requirements for this unit, and we would love to have you on this shift.",
+        "personal_note": "We would love to have you on this shift.",
         "subject": "Open Med-Surg day shift at Lakeside Community Hospital on Fri, Oct 16",
-        "body": "Hi Ethan,\n\nYour experience and credentials match the requirements for this unit, and we would love to have you on this shift.\n\nShift details\n- Facility: Lakeside Community Hospital (Denver, CO)\n- Unit: Med-Surg\n- Time: Fri, Oct 16, 2026, 7:00 AM to Fri, Oct 16, 2026, 7:00 PM (America/Denver)\n\nCredential reminder\n- Your BLS expires soon. Please upload your renewal so you stay eligible.\n\nPlease reply by Wed, Oct 14, 2026, 7:00 AM (America/Denver) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
+        "body": "Hi Ethan,\n\nWe would love to have you on this shift.\nYour recorded experience: 6 years.\n\nShift details\n- Facility: Lakeside Community Hospital (Denver, CO)\n- Unit: Med-Surg\n- Time: Fri, Oct 16, 2026, 7:00 AM to Fri, Oct 16, 2026, 7:00 PM (America/Denver)\n\nCredential reminder\n- Your BLS expires soon. Please upload your renewal so you stay eligible.\n\nPlease reply by Wed, Oct 14, 2026, 7:00 AM (America/Denver) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
       }
     }
   ],
@@ -140,8 +142,8 @@
       "kind": "llm",
       "name": "model",
       "ok": false,
-      "detail": "simulated LLM outage",
-      "duration_ms": 13,
+      "detail": "Provider failure (ConnectionError)",
+      "duration_ms": 0,
       "input_tokens": null,
       "output_tokens": null
     },
@@ -161,6 +163,7 @@
     "tool_calls": 0,
     "input_tokens": 0,
     "output_tokens": 0,
-    "duration_ms": 21
-  }
+    "duration_ms": 3
+  },
+  "outreach_review": null
 }

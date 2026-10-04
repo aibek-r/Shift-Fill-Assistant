@@ -77,8 +77,16 @@ def candidate_coverage(
     )
 
 
-def coverage_summary(coverage: CandidateCoverage, positions_open: int) -> str:
+def coverage_summary(
+    coverage: CandidateCoverage, positions_open: int, requested_count: int | None = None
+) -> str:
     sentences = [_vetting_sentence(coverage), _shortlist_sentence(coverage, positions_open)]
+    if requested_count is not None:
+        gap = max(0, requested_count - coverage.recommended)
+        target = f"Requested shortlist: {coverage.recommended} of {requested_count} clinicians"
+        if gap:
+            target += f"; {gap} fewer than requested"
+        sentences.append(target + ".")
     if coverage.removed_by_verification:
         removed = plural(coverage.removed_by_verification, "recommendation")
         sentences.append(f"Verification removed {removed} that failed evidence checks.")

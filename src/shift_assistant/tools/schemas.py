@@ -94,6 +94,7 @@ class PolicyExcerpt(_Result):
 
 class SearchFacilityPoliciesResult(_Result):
     excerpts: list[PolicyExcerpt]
+    warnings: list[str] = []
 
 
 # --- search_clinicians -------------------------------------------------------------------------
@@ -144,6 +145,8 @@ class CandidateEvaluation(_Result):
     warnings: list[Finding]
     # Shown in the report, kept out of the model's context: findings already carry what it needs.
     credentials: list[CredentialCheck] = Field(default_factory=list, exclude=True)
+    years_experience: int | None = Field(default=None, exclude=True)
+    preference_quotes: list[str] = Field(default_factory=list, exclude=True)
 
 
 class EvaluateCandidatesResult(_Result):
@@ -169,11 +172,12 @@ class DraftOutreachArgs(_Args):
         min_length=20,
         max_length=500,
         description=(
-            "1-3 friendly sentences, addressed to the clinician, on why they fit the shift, "
-            "using only facts from tool results. State a day or night preference only as the "
-            "profile words it, keeping preference and willingness distinct. Shift logistics and "
-            "credential reminders are added automatically, so do not mention them. No pay rates, "
-            "contact details or other clinicians."
+            "Select 1-3 of these exact friendly sentences: 'We would love to have you on this "
+            "shift.'; 'Would you be interested in this shift?'; 'Thank you for considering this "
+            "opportunity.'; 'We would be happy to discuss this opportunity with you.'; "
+            "'We think you would fit this unit well.'. Recorded experience, exact profile "
+            "preferences, shift logistics and credential reminders are added automatically. "
+            "Do not write facts, pay rates, contact details or other clinicians in this note."
         ),
     )
 
