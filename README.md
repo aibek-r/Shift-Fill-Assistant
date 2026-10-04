@@ -127,9 +127,11 @@ plans the workflow and ranks eligible clinicians**.
   Pydantic models. Bad tool arguments, unknown IDs and malformed JSON become readable errors that
   the model can recover from. Unexpected tool exceptions are logged and contained without leaking
   internals.
-- **Retries and fallback.** The OpenAI SDK retries 429s, 5xx errors and timeouts with
-  exponential backoff. If the LLM still fails, is missing, or exceeds `MAX_AGENT_STEPS` or
-  `MAX_RUN_SECONDS`, the graph routes to a **deterministic fallback**. It uses the same engine
+- **Retries and fallback.** SDK retries are disabled; the workflow retries rate limits,
+  timeouts and selected 5xx errors itself, with backoff, inside one model execution budget
+  (`MAX_RUN_SECONDS`). Answers that arrive after the deadline are discarded. If the LLM still
+  fails, is missing, or exceeds `MAX_AGENT_STEPS` or the budget, the graph routes to a
+  **deterministic fallback**. It uses the same engine
   and templates and labels the report `mode: fallback`. It uses the selected shift, else the one
   shift the agent was working on. It uses the requested shortlist size, or open positions when
   unspecified, and honors requests without outreach. The UI can simulate an outage to show this.
@@ -213,8 +215,8 @@ All settings live in `config.py` and can be overridden through environment varia
 | `OPENAI_MODEL` | `gpt-5.4-mini` | Any tool-calling OpenAI model |
 | `OPENAI_REASONING_EFFORT` | `low` | Set `none` for non-reasoning models such as `gpt-4.1-mini` |
 | `MAX_AGENT_STEPS` / `MAX_REPAIR_ATTEMPTS` | `12` / `2` | Loop budgets |
-| `MAX_RUN_SECONDS` | `180` | Wall-clock budget, checked before each LLM call |
-| `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | `60` / `3` | Per-call timeout and SDK retries |
+| `MAX_RUN_SECONDS` | `180` | Model execution budget: one deadline for every model call, retry and backoff. Not a total-workflow deadline; completion and fallback may run after it |
+| `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | `60` / `3` | Per-call timeout (shortened to the budget left) and retries for transient errors; SDK retries are disabled |
 | `MAX_RECOMMENDATIONS` | `5` | Upper bound on the shortlist |
 | `RETRIEVAL_MIN_SCORE` | `0.5` | Policy relevance cut-off for the embedding model (keyword fallback uses `0`) |
 | `EXPIRY_WARNING_DAYS` | `30` | Window for the credential-expiring warning |

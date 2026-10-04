@@ -74,10 +74,12 @@ class ScriptedModel:
     def __init__(self, responses: Sequence[AIMessage | Exception]) -> None:
         self._responses = list(responses)
         self.received: list[list[BaseMessage]] = []
+        self.timeouts: list[float | None] = []  # per-call timeout the workflow passed
 
-    def __call__(self, messages: LanguageModelInput) -> BaseMessage:
+    def __call__(self, messages: LanguageModelInput, timeout: float | None = None) -> BaseMessage:
         assert isinstance(messages, list), "the workflow always sends a message list"
         self.received.append([m for m in messages if isinstance(m, BaseMessage)])
+        self.timeouts.append(timeout)
         if not self._responses:
             raise AssertionError("ScriptedModel ran out of responses")
         response = self._responses.pop(0)

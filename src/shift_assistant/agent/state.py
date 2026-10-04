@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import operator
-import time
 from typing import Annotated, TypedDict
 
 from langchain_core.messages import AnyMessage, BaseMessage
@@ -32,10 +31,12 @@ class AgentState(TypedDict):
     failure: str | None  # set when the workflow must hand over to the fallback
     report: StaffingReport | None
     trace: Annotated[list[TraceEvent], operator.add]  # audit trail, append-only
-    started_at: float  # time.perf_counter() when the run began, for the wall-clock budget
+    model_deadline: float  # monotonic time after which no model work may start or count
 
 
-def initial_state(request: StaffingRequest, messages: list[BaseMessage]) -> AgentState:
+def initial_state(
+    request: StaffingRequest, messages: list[BaseMessage], model_deadline: float
+) -> AgentState:
     return AgentState(
         request=request,
         messages=list(messages),  # type: ignore[arg-type]
@@ -49,5 +50,5 @@ def initial_state(request: StaffingRequest, messages: list[BaseMessage]) -> Agen
         failure=None,
         report=None,
         trace=[],
-        started_at=time.perf_counter(),
+        model_deadline=model_deadline,
     )

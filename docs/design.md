@@ -69,3 +69,36 @@ submission such as `[ineligible, A, B]` with a target of 2 keeps both A and B.
   outside the pool are still removed.
 - **The model's "nobody is eligible" claim can be overridden.** Its summary is never shown;
   the report is built from verified evidence, including code additions.
+
+## Model execution budget
+
+`MAX_RUN_SECONDS` is a **model execution budget**, not a deadline for the whole workflow.
+
+- At the start of a run, the assistant sets one deadline on a monotonic clock. Every model call,
+  retry and backoff must start before it.
+- SDK retries are disabled (`max_retries=0`). `agent/llm.py::invoke_within_budget` retries only
+  transient errors the OpenAI adapter reports: rate limits (429), timeouts, dropped connections
+  and server errors 500, 502, 503 and 504. Retries are capped by `LLM_MAX_RETRIES`, with
+  exponential backoff of 1, 2, 4 and at most 8 seconds.
+- Before each call or retry it computes the remaining budget. Each call's timeout is
+  `min(LLM_TIMEOUT_SECONDS, remaining)`. A backoff that would end at or after the deadline is not
+  taken.
+- When a call returns, the deadline is checked again. An answer that arrives late is discarded,
+  even if it is a valid submission.
+- When the budget is spent, no further model work starts. The workflow hands over to the
+  deterministic fallback, which applies the same eligibility engine and templates.
+
+Tool execution between model calls counts toward elapsed time but is not interrupted.
+Deterministic completion, verification and the fallback may run after the deadline; they are
+local and fast, but they are not time-limited.
+
+**Limits of the guarantee.** Model calls are synchronous. A call in flight can only be stopped by
+its transport timeout, and HTTP timeouts bound individual connect, read and write waits rather
+than total elapsed time. A slow, trickling response can therefore run somewhat past the deadline
+before it is discarded. The deadline is strict about *starting* model work and about *accepting*
+its output, not about wall-clock time inside one call.
+
+**Trade-off: late answers are discarded.** A valid submission that arrives after the deadline is
+thrown away in favor of the rules-only fallback. Keeping it would make the budget meaningless
+under load, and the fallback is compliant (same engine, same templates), only less nuanced in
+its ranking. The cost is that a slow but correct model answer is wasted.

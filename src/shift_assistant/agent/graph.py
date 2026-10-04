@@ -5,9 +5,9 @@
                |                       |--(fixable)-> agent                        (self-repair)
                |--(failure)-------> fallback -> END   <--(unrecoverable)--|
 
-Budgets (LLM calls, wall-clock time, repair attempts) bound the loop; any LLM failure degrades
-to the deterministic fallback instead of an error page. `complete` finishes mandatory work the
-model left undone (vetting, shortlist size, requested drafts) with deterministic rules.
+Budgets (LLM calls, model execution time, repair attempts) bound the loop; any LLM failure
+degrades to the deterministic fallback instead of an error page. `complete` finishes mandatory
+work the model left undone (vetting, shortlist size, requested drafts) with deterministic rules.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -23,7 +23,14 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from pydantic import ValidationError
 
-from shift_assistant.agent.llm import ToolCallingModel
+from shift_assistant.agent.llm import (
+    Clock,
+    ModelBudgetExceeded,
+    RetryPolicy,
+    Sleep,
+    ToolCallingModel,
+    invoke_within_budget,
+)
 from shift_assistant.agent.state import AgentState
 from shift_assistant.agent.submission import SUBMIT_TOOL_NAME, AgentSubmission, SubmissionStatus
 from shift_assistant.config import Settings
@@ -47,6 +54,8 @@ class AgentDependencies:
     completion: DeterministicCompletion
     fallback: DeterministicFallback
     settings: Settings
+    clock: Clock = field(default=time.monotonic)  # injectable for budget tests
+    sleep: Sleep = field(default=time.sleep)
 
 
 def build_agent_graph(deps: AgentDependencies) -> CompiledStateGraph[AgentState]:
@@ -75,6 +84,10 @@ class _Nodes:
     def __init__(self, deps: AgentDependencies) -> None:
         self._deps = deps
         self._settings = deps.settings
+        self._retry_policy = RetryPolicy(
+            max_retries=deps.settings.llm_max_retries,
+            call_timeout=deps.settings.llm_timeout_seconds,
+        )
 
     # --- Nodes -------------------------------------------------------------------------------
 
@@ -83,14 +96,25 @@ class _Nodes:
             return {"failure": "no LLM configured (OPENAI_API_KEY is missing)"}
         if state["llm_calls"] >= self._settings.max_agent_steps:
             return {"failure": f"step budget of {self._settings.max_agent_steps} LLM calls used up"}
-        if time.perf_counter() - state["started_at"] > self._settings.max_run_seconds:
-            return {"failure": f"time budget of {self._settings.max_run_seconds:g}s used up"}
 
         started = time.perf_counter()
         step = len(state["trace"]) + 1
         try:
-            response = self._deps.model.invoke(state["messages"])
-        except Exception as exc:  # provider error after SDK retries: degrade, don't crash
+            response, retries = invoke_within_budget(
+                self._deps.model,
+                state["messages"],
+                deadline=state["model_deadline"],
+                policy=self._retry_policy,
+                clock=self._deps.clock,
+                sleep=self._deps.sleep,
+            )
+        except ModelBudgetExceeded as exc:  # stop model work; deterministic recovery follows
+            budget = f"model time budget of {self._settings.max_run_seconds:g}s used up"
+            return {
+                "failure": f"{budget} ({exc})",
+                "trace": [_event(step, "llm", "model", started, ok=False, detail=str(exc))],
+            }
+        except Exception as exc:  # provider error after bounded retries: degrade, don't crash
             logger.warning("LLM call failed (%s)", type(exc).__name__)
             return {
                 "failure": f"LLM call failed ({type(exc).__name__})",
@@ -110,6 +134,8 @@ class _Nodes:
 
         usage = response.usage_metadata
         planned = ", ".join(call["name"] for call in response.tool_calls) or "no tool call"
+        if retries:
+            planned += f" (after {retries} {'retry' if retries == 1 else 'retries'})"
         return {
             "messages": [response],
             "llm_calls": state["llm_calls"] + 1,

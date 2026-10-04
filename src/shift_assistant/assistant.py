@@ -8,7 +8,7 @@ from collections.abc import Callable
 from pydantic import ValidationError
 
 from shift_assistant.agent.graph import AgentDependencies, build_agent_graph
-from shift_assistant.agent.llm import ToolCallingModel, build_chat_model
+from shift_assistant.agent.llm import Clock, Sleep, ToolCallingModel, build_chat_model
 from shift_assistant.agent.prompts import build_initial_messages
 from shift_assistant.agent.state import AgentState, initial_state
 from shift_assistant.agent.submission import submission_tool_schema
@@ -50,6 +50,7 @@ class ShiftFillAssistant:
         # True when the sentence-embedding model failed to load and keyword matching stands in.
         self.retrieval_degraded = retrieval_degraded
         self.llm_enabled = deps.model is not None
+        self._clock = deps.clock
         self._graph = build_agent_graph(deps)
         # Each LLM call costs at most three graph steps (agent, tools or validate, verify).
         self._recursion_limit = settings.max_agent_steps * 3 + 10
@@ -59,9 +60,11 @@ class ShiftFillAssistant:
         messages = build_initial_messages(
             request, self.settings.today, self.settings.max_recommendations
         )
+        # One deadline for all model work in this run, including retries and backoff.
+        model_deadline = self._clock() + self.settings.max_run_seconds
         final: AgentState | None = None
         for mode, chunk in self._graph.stream(
-            initial_state(request, messages),
+            initial_state(request, messages, model_deadline),
             config={"recursion_limit": self._recursion_limit},
             stream_mode=["updates", "values"],
         ):
@@ -125,8 +128,10 @@ def build_assistant(
     *,
     embedder: Embedder | None = None,
     chat_model: ToolCallingModel | None = None,
+    clock: Clock = time.monotonic,
+    sleep: Sleep = time.sleep,
 ) -> ShiftFillAssistant:
-    """Composition root. Pass `chat_model` / `embedder` to inject fakes in tests."""
+    """Composition root. Pass `chat_model`, `embedder`, `clock` or `sleep` to inject fakes."""
     settings = settings or Settings()
     repository = StaffingRepository.from_directory(settings.data_dir)
     embedder = embedder or create_embedder(settings.embedding_model, settings.cache_dir)
@@ -148,6 +153,8 @@ def build_assistant(
         completion=DeterministicCompletion(repository, toolkit, settings.max_recommendations),
         fallback=DeterministicFallback(repository, toolkit, settings.max_recommendations),
         settings=settings,
+        clock=clock,
+        sleep=sleep,
     )
     return ShiftFillAssistant(
         settings, repository, deps, toolkit, retrieval_degraded=not embedder.semantic

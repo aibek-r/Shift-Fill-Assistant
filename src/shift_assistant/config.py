@@ -28,13 +28,23 @@ class Settings(BaseSettings):
     openai_reasoning_effort: Literal["low", "medium", "high"] | None = Field(
         default="low", description="Set to 'none' for models without reasoning support."
     )
-    llm_timeout_seconds: float = Field(default=60.0, gt=0)
-    llm_max_retries: int = Field(default=3, ge=0, description="SDK retries with backoff.")
+    llm_timeout_seconds: float = Field(
+        default=60.0, gt=0, description="Per-call timeout, shortened to the budget left."
+    )
+    llm_max_retries: int = Field(
+        default=3,
+        ge=0,
+        description="Retries for transient model errors, with backoff inside the model budget. "
+        "SDK retries are disabled.",
+    )
 
     # Agent budgets and guardrails
     max_agent_steps: int = Field(default=12, ge=1, description="Max LLM calls per request.")
     max_run_seconds: float = Field(
-        default=180.0, gt=0, description="Wall-clock budget; checked before each LLM call."
+        default=180.0,
+        gt=0,
+        description="Model execution budget: one deadline from the start of the run for every "
+        "model call, retry and backoff. Deterministic completion and fallback may run after it.",
     )
     max_repair_attempts: int = Field(default=2, ge=0, description="Max rejected submissions.")
     max_recommendations: int = Field(default=5, ge=1)
