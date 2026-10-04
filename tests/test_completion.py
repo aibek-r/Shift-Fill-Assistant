@@ -251,6 +251,29 @@ def test_outreach_that_cannot_be_drafted_needs_review(
     assert "Requested outreach is missing for 1 recommendation." in report.summary
 
 
+@pytest.mark.parametrize(
+    ("method", "issue"),
+    [("evaluate", "INCOMPLETE"), ("create_draft", "MISSING_OUTREACH")],
+)
+def test_fallback_reports_work_it_cannot_complete_as_needs_review(
+    monkeypatch: pytest.MonkeyPatch, method: str, issue: str
+) -> None:
+    fail_for(monkeypatch, method, "C-103" if method == "evaluate" else "C-101")
+    assistant = build_assistant(make_settings(), embedder=HashingEmbedder())
+
+    report = assistant.run(WITH_OUTREACH.model_copy(update={"shift_id": "SHF-1001"}))
+
+    assert (report.mode, report.status) == (RunMode.FALLBACK, ReportStatus.NEEDS_REVIEW)
+    assert [r.clinician_id for r in report.recommendations] == ["C-101"]  # verified work kept
+    assert "COMPLETION_UNRESOLVED" in {i.code for i in report.issues}
+    assert report.coverage is not None
+    if issue == "INCOMPLETE":
+        assert report.coverage.unevaluated_ids == ["C-103"]
+    else:
+        assert report.recommendations[0].outreach is None
+        assert "Requested outreach is missing for 1 recommendation." in report.summary
+
+
 def test_fully_evaluated_pool_with_nobody_eligible(scripted_assistant: AssistantFactory) -> None:
     steps = [
         ai(tool_call("find_open_shifts", shift_id="SHF-3002")),

@@ -6,6 +6,8 @@ compliant (if less nuanced) shortlist when the LLM is down, misconfigured or mis
 
 from __future__ import annotations
 
+import logging
+
 from shift_assistant.contracts import (
     CandidateRecommendation,
     IssueSeverity,
@@ -22,13 +24,17 @@ from shift_assistant.reliability.reporting import (
     coverage_summary,
     exclusions,
     fill_status,
+    missing_outreach,
     rule_ranked,
 )
 from shift_assistant.reliability.resolution import TodayIn, resolve_shift
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.tools.evidence import EvidenceLedger
 from shift_assistant.tools.facts import DEFAULT_NOTE, candidate_rationale
+from shift_assistant.tools.schemas import CandidateEvaluation
 from shift_assistant.tools.toolkit import StaffingToolkit
+
+logger = logging.getLogger(__name__)
 
 FALLBACK_NOTE = DEFAULT_NOTE
 
@@ -77,27 +83,48 @@ class DeterministicFallback:
             )
 
         clinicians = {c.id: c for c in self._repository.candidate_pool(shift)}
-        evaluations = [self._toolkit.evaluate(shift, c) for c in clinicians.values()]
+        unresolved: list[str] = []  # a failed check or draft is reported, never crashes the run
+        evaluations: list[CandidateEvaluation] = []
+        for clinician in clinicians.values():
+            try:
+                evaluations.append(self._toolkit.evaluate(shift, clinician))
+            except Exception as exc:
+                logger.warning("Fallback could not vet %s (%s)", clinician.id, type(exc).__name__)
+                unresolved.append(
+                    f"The compliance check for {clinician.id} could not run "
+                    f"({type(exc).__name__}). Vet this clinician manually."
+                )
         target = request.shortlist_target(shift.positions_open)
         shortlist = rule_ranked(evaluations)[: min(target, self._max_recommendations)]
-        recommendations = [
-            CandidateRecommendation(
-                rank=rank,
-                clinician_id=e.clinician_id,
-                clinician_name=e.clinician_name,
-                selected_by=Origin.CODE,
-                rationale=candidate_rationale(e),
-                warnings=e.warnings,
-                credentials=e.credentials,
-                outreach=self._toolkit.create_draft(
-                    shift, clinicians[e.clinician_id], FALLBACK_NOTE, e
+        recommendations = []
+        for rank, e in enumerate(shortlist, start=1):
+            draft = None
+            if request.draft_outreach:
+                try:
+                    draft = self._toolkit.create_draft(
+                        shift, clinicians[e.clinician_id], FALLBACK_NOTE, e
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Fallback could not draft for %s (%s)", e.clinician_id, type(exc).__name__
+                    )
+                    unresolved.append(
+                        f"Outreach for {e.clinician_id} could not be drafted "
+                        f"({type(exc).__name__}). Write it manually."
+                    )
+            recommendations.append(
+                CandidateRecommendation(
+                    rank=rank,
+                    clinician_id=e.clinician_id,
+                    clinician_name=e.clinician_name,
+                    selected_by=Origin.CODE,
+                    rationale=candidate_rationale(e),
+                    warnings=e.warnings,
+                    credentials=e.credentials,
+                    outreach=draft,
+                    outreach_by=Origin.CODE if draft else None,
                 )
-                if request.draft_outreach
-                else None,
-                outreach_by=Origin.CODE if request.draft_outreach else None,
             )
-            for rank, e in enumerate(shortlist, start=1)
-        ]
         eligible_alternates = alternates(evaluations, {r.clinician_id for r in recommendations})
         excluded = exclusions(evaluations)
         coverage = candidate_coverage(
@@ -112,7 +139,12 @@ class DeterministicFallback:
             summary=" ".join(
                 [
                     *_resolution_note(shift.id, resolution.method, resolution.criteria),
-                    coverage_summary(coverage, shift.positions_open, request.requested_count),
+                    coverage_summary(
+                        coverage,
+                        shift.positions_open,
+                        request.requested_count,
+                        missing_outreach(request, recommendations),
+                    ),
                     "Ranked by credential warnings, then experience.",
                 ]
             ),
@@ -136,6 +168,14 @@ class DeterministicFallback:
                     ]
                     if target > self._max_recommendations
                     else []
+                ),
+                *(
+                    VerificationIssue(
+                        severity=IssueSeverity.WARNING,
+                        code="COMPLETION_UNRESOLVED",
+                        message=message,
+                    )
+                    for message in unresolved
                 ),
             ],
         )
