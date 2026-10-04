@@ -7,6 +7,7 @@ from datetime import date
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
 from shift_assistant.contracts import StaffingRequest
+from shift_assistant.intent import relative_date_window
 
 SYSTEM_PROMPT = """\
 You are the Shift Fill Assistant for the operations team of a healthcare staffing platform.
@@ -21,6 +22,9 @@ several match and the request does not say which, submit status "needs_clarifica
 specific question that lists the options you found. Resolve relative dates such as "tomorrow" or \
 "next week" against today's date. In the summary, give each shift's exact date and say plainly \
 when none falls on the requested dates; never describe a shift as matching dates it does not.
+   Calendar weeks run Monday through Sunday. "Next week" means the following calendar week. \
+If the dates do not match, state this in the clarification question as well as the summary, \
+and offer other dates only as alternatives requiring the coordinator's confirmation.
 2. Read facility context with search_facility_policies: the unit profile (preferences) and any \
 rule relevant to the request.
 3. Find candidates with search_clinicians, using a query that reflects the unit's preferences \
@@ -72,6 +76,11 @@ def build_initial_messages(
             "(subject to eligibility and the configured limit)."
         )
     user_turn += f"\nOutreach drafts required: {'yes' if request.draft_outreach else 'no'}."
+    if not request.shift_id and (window := relative_date_window(request.text, today)):
+        user_turn += (
+            f"\nRequested facility-local shift start dates: {window.label}. "
+            "Shifts outside this period are alternatives; ask before staffing one."
+        )
     return [
         SystemMessage(
             SYSTEM_PROMPT.format(today=today.isoformat(), max_recommendations=max_recommendations)

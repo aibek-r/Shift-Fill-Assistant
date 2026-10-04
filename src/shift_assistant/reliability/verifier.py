@@ -7,6 +7,7 @@ facts; arbitrary model rationales and summary notes are never promoted to report
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import date
 
 from shift_assistant.agent.submission import AgentSubmission, SubmissionStatus
 from shift_assistant.contracts import (
@@ -30,6 +31,7 @@ from shift_assistant.reliability.reporting import (
     coverage_summary,
     exclusions,
     fill_status,
+    relative_date_clarification,
 )
 from shift_assistant.tools.evidence import EvidenceLedger
 from shift_assistant.tools.facts import candidate_rationale
@@ -40,8 +42,9 @@ def build_agent_report(
     submission: AgentSubmission,
     ledger: EvidenceLedger,
     max_recommendations: int,
+    today: date | None = None,
 ) -> StaffingReport:
-    problems = check_grounding(submission, ledger, max_recommendations, request)
+    problems = check_grounding(submission, ledger, max_recommendations, request, today)
     if any(p.action is GroundingAction.REJECT_SUBMISSION for p in problems):
         return StaffingReport(
             request=request,
@@ -51,16 +54,18 @@ def build_agent_report(
             issues=[_issue(p) for p in problems],
         )
     if submission.status is SubmissionStatus.NEEDS_CLARIFICATION:
+        question = submission.clarification_question or ""
+        summary = clarification_summary(list(ledger.shifts.values()), question)
+        if today is not None and (
+            grounded := relative_date_clarification(request, list(ledger.shifts.values()), today)
+        ):
+            summary, question = grounded
         return StaffingReport(
             request=request,
             status=ReportStatus.NEEDS_CLARIFICATION,
             mode=RunMode.AGENT,
-            # The model's own explanation can misdescribe dates, so the summary states only the
-            # shifts find_open_shifts returned. Its free-text explanation is omitted.
-            summary=clarification_summary(
-                list(ledger.shifts.values()), submission.clarification_question or ""
-            ),
-            clarification_question=submission.clarification_question,
+            summary=summary,
+            clarification_question=question,
         )
 
     shift = ledger.shifts.get(submission.shift_id or "")

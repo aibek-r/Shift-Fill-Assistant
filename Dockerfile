@@ -11,6 +11,7 @@ RUN pip install -e .
 
 COPY data ./data
 COPY app ./app
+COPY .streamlit ./.streamlit
 # Bake the embedding model into the image so the container starts without a download. Load it
 # directly (not via create_embedder, which falls back to keyword matching) so a failed download
 # fails the build instead of shipping a degraded image.

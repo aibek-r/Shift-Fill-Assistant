@@ -186,6 +186,7 @@ class _Nodes:
                     state["ledger"],
                     self._settings.max_recommendations,
                     state["request"],
+                    self._settings.today,
                 )
                 errors = [p.message for p in problems]
                 rejected = any(p.action is GroundingAction.REJECT_SUBMISSION for p in problems)
@@ -217,7 +218,11 @@ class _Nodes:
         submission = state["submission"]
         assert submission is not None, "routing guarantees a parsed submission"
         report = build_agent_report(
-            state["request"], submission, state["ledger"], self._settings.max_recommendations
+            state["request"],
+            submission,
+            state["ledger"],
+            self._settings.max_recommendations,
+            self._settings.today,
         )
         detail = (
             f"{len(report.recommendations)} recommendation(s) verified; "
@@ -229,7 +234,9 @@ class _Nodes:
     def fallback(self, state: AgentState) -> Update:
         started = time.perf_counter()
         reason = state["failure"] or "unknown failure"
-        report = self._deps.fallback.build_report(state["request"], state["ledger"], reason)
+        report = self._deps.fallback.build_report(
+            state["request"], state["ledger"], reason, self._settings.today
+        )
         event = _event(len(state["trace"]) + 1, "fallback", "rules", started, detail=reason)
         return {"report": report, "trace": [event]}
 

@@ -1,0 +1,33 @@
+# Adapted from Streamlit's shadcn theme, using a calm teal accent and local system fonts.
+[theme]
+base = "light"
+primaryColor = "#0F766E"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F3F7F7"
+textColor = "#182D36"
+linkColor = "#0F766E"
+borderColor = "#DBE6E6"
+codeBackgroundColor = "#F3F7F7"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "0.75rem"
+buttonRadius = "0.5rem"
+font = "sans-serif"
+baseFontSize = 16
+headingFontSizes = ["2.25rem", "1.65rem", "1.2rem", "1.05rem", "1rem", "0.9rem"]
+headingFontWeights = [650, 600, 600, 600, 600, 600]
+blueColor = "#0F766E"
+blueTextColor = "#115E59"
+blueBackgroundColor = "#EAF5F3"
+greenColor = "#15803D"
+orangeColor = "#B45309"
+redColor = "#B42318"
+grayColor = "#52666F"
+dataframeHeaderBackgroundColor = "#F3F7F7"
+
+[theme.sidebar]
+backgroundColor = "#F3F7F7"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#182D36"
+borderColor = "#DBE6E6"
+primaryColor = "#0F766E"

@@ -1,5 +1,25 @@
 # Main issue fixes and validation
 
+## Relative-date follow-up: October 4, 2026
+
+- Reproduced the screenshot's misleading clarification with a scripted model: "next week"
+  from the configured October 2 reference date means October 5–11, not October 14 or 16.
+- Code now renders supported relative-date clarifications from retrieved shift records,
+  identifies dates outside the requested window as alternatives, and blocks completed
+  submissions outside that window. Fallback also asks for confirmation instead of staffing
+  an alternative. An explicitly pinned shift continues to override conflicting request text.
+- Calendar weeks run Monday through Sunday. Tests cover Monday/Sunday boundaries, year
+  rollover, matching dates, mismatching dates, repair feedback, fallback and pinned shifts.
+  Supported expressions are today, tomorrow, this week and next week; multiple different
+  expressions are left to the model for clarification.
+- All 125 offline tests, Ruff lint/format checks and strict mypy checks passed.
+- One paid `gpt-5.4-mini` check with hashing retrieval completed in agent mode with
+  `needs_clarification`, explicitly reporting no St. Mary's ICU shifts for October 5–11.
+  It used 3 LLM calls, 5,656 input tokens and 603 output tokens, estimated at approximately
+  $0.00696. The local report is saved in `../tmp/relative-date-live.json`.
+
+## Original main-issue validation
+
 Validated on October 3, 2026 with Python 3.13.15, Streamlit 1.65.0 and
 `gpt-5.4-mini`. All staffing data used in paid calls was mocked.
 

@@ -217,11 +217,17 @@ def test_clarification_question_is_returned(scripted_assistant: AssistantFactory
     report = assistant.run(StaffingRequest(text="An ICU nurse for St. Mary's next week"))
 
     assert report.status is ReportStatus.NEEDS_CLARIFICATION
-    assert report.clarification_question == clarification()["clarification_question"]
+    assert report.clarification_question is not None
+    assert "None of the shifts found starts next week (2026-10-05 to 2026-10-11)" in (
+        report.clarification_question
+    )
+    assert "Would you like one of these alternatives" in report.clarification_question
     assert report.recommendations == []
     # The summary is built from find_open_shifts, not from the model's description of it.
     assert report.summary == (
-        "Open shifts found: SHF-1001, ICU night shift at St. Mary's Medical Center, "
+        "None of the shifts found starts next week (2026-10-05 to 2026-10-11). "
+        "Alternatives outside that period: Open shifts found: "
+        "SHF-1001, ICU night shift at St. Mary's Medical Center, "
         "Wed, Oct 14, 2026, 7:00 PM to Thu, Oct 15, 2026, 7:00 AM (America/Chicago); "
         "SHF-1003, ICU day shift at St. Mary's Medical Center, "
         "Fri, Oct 16, 2026, 7:00 AM to Fri, Oct 16, 2026, 7:00 PM (America/Chicago)."

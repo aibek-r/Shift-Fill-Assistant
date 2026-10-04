@@ -7,11 +7,14 @@ from collections.abc import Iterator
 
 import pytest
 import streamlit as st
+from langchain_core.runnables import RunnableLambda
 from streamlit.testing.v1 import AppTest
 
 from shift_assistant.config import PROJECT_ROOT
+from shift_assistant.contracts import StaffingRequest
 from shift_assistant.retrieval.embedder import HashingEmbedder
 from shift_assistant.review import DraftStatus
+from tests.conftest import ScriptedModel, ai, tool_call
 
 
 @pytest.fixture
@@ -90,3 +93,53 @@ def test_invalid_submissions_clear_previous_results(app: AppTest, invalid: str) 
     assert "report" not in app.session_state and "review" not in app.session_state
     assert not app.json and not app.code
     assert app.warning or app.error
+
+
+def test_facility_choice_preserves_dates_count_and_outreach_intent(
+    app: AppTest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    model = ScriptedModel(
+        [
+            ai(tool_call("find_open_shifts", facility="Mercy General")),
+            ai(
+                tool_call(
+                    "submit_recommendation",
+                    status="needs_clarification",
+                    summary="The requested facility is unknown.",
+                    clarification_question=(
+                        "Which facility did you mean: St. Mary's Medical Center, "
+                        "Lakeside Community Hospital, or Bayview Children's Hospital?"
+                    ),
+                )
+            ),
+        ]
+    )
+    monkeypatch.setattr(
+        "shift_assistant.assistant.build_chat_model", lambda *args: RunnableLambda(model)
+    )
+    st.cache_resource.clear()
+    app.text_area(key="request_text").set_value(
+        "Find two ICU nurses for Mercy General tomorrow night without outreach."
+    )
+    click(app, "Run assistant")
+    assert any(h.value == "Choose a facility" for h in app.subheader)
+    assert len([b for b in app.button if b.label == "Use this facility"]) == 3
+    app.button(key="clarify-FAC-001").click().run()
+    assert not app.exception
+    assert app.text_area(key="request_text").value == (
+        "Find two ICU nurses for St. Mary's Medical Center tomorrow night without outreach."
+    )
+    updated = StaffingRequest(text=app.text_area(key="request_text").value)
+    assert updated.requested_count == 2 and not updated.draft_outreach
+    assert "report" not in app.session_state and "review" not in app.session_state
+    assert app.selectbox[0].value is None
+    assert len(model.received) == 2  # Choosing a facility prepares the form without a model call.
+
+
+def test_example_choice_clears_a_conflicting_pin(app: AppTest) -> None:
+    run_icu(app)
+    click(app, "PICU shortlist")
+    assert app.selectbox[0].value is None
+    assert "Bayview" in (app.text_area(key="request_text").value or "")
+    assert "report" not in app.session_state and "review" not in app.session_state

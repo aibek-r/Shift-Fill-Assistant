@@ -13,11 +13,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import date
 from enum import StrEnum
 
 from shift_assistant.agent.submission import AgentSubmission, RecommendedCandidate, SubmissionStatus
 from shift_assistant.contracts import StaffingRequest
 from shift_assistant.domain.models import CredentialType
+from shift_assistant.intent import relative_date_window
 from shift_assistant.retrieval.knowledge import GLOBAL_SCOPE
 from shift_assistant.tools.evidence import EvidenceLedger
 from shift_assistant.tools.schemas import CandidateEvaluation
@@ -47,6 +49,7 @@ def check_grounding(
     ledger: EvidenceLedger,
     max_recommendations: int,
     request: StaffingRequest | None = None,
+    today: date | None = None,
 ) -> list[GroundingProblem]:
     if submission.status is SubmissionStatus.NEEDS_CLARIFICATION:
         if request is not None and request.shift_id in ledger.shifts:
@@ -76,6 +79,19 @@ def check_grounding(
                 action=GroundingAction.REJECT_SUBMISSION,
             )
         ]
+
+    if request is not None and not request.shift_id and today is not None:
+        window = relative_date_window(request.text, today)
+        if window is not None and not window.contains(ledger.shifts[shift_id].start.date()):
+            return [
+                GroundingProblem(
+                    code="REQUESTED_DATE_MISMATCH",
+                    message=f"{shift_id} starts outside {window.label}. Find a shift within "
+                    "the requested dates or submit needs_clarification, offering other dates "
+                    "explicitly as alternatives. Do not complete an alternative without consent.",
+                    action=GroundingAction.REJECT_SUBMISSION,
+                )
+            ]
 
     problems: list[GroundingProblem] = []
     target = (

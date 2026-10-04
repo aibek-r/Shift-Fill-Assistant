@@ -36,6 +36,13 @@ relative dates match the October 2026 mock shifts.
 Docker is optional, and the Dockerfile has not been verified in the final environment:
 `docker build -t shift-fill-assistant . && docker run -p 8501:8501 --env-file .env shift-fill-assistant`
 
+The UI uses a teal theme, a local calendar/checkmark logo, an illustrated empty state and
+initials avatars. The request and results sit in a centered, responsive workspace. When a
+clarifying question offers known facilities, facility cards update the request for review
+without making another model call. Selecting an example clears a previously pinned shift.
+Theme settings live in `.streamlit/config.toml`; start Streamlit from this project directory
+to load them. The SVG assets are local and require no external image service.
+
 ## Architecture
 
 ```mermaid
@@ -97,6 +104,9 @@ plans the workflow and ranks eligible clinicians**.
   honor them. `ready` means the requested shortlist is complete, independently of open positions;
   the summary reports both. A shortage or configured recommendation limit remains `partial`.
   The pinned shift is enforced during tool execution and final verification.
+  Common relative dates (today, tomorrow, this week and next week) are checked against
+  `REFERENCE_DATE`, or today's date when unset. Calendar weeks run Monday through Sunday;
+  shifts outside the requested period require clarification in both agent and fallback modes.
 - **Grounding checks with self-repair.** On submission, `check_grounding` confirms that each
   reference came from this run's evidence. The shift, every clinician (vetted and eligible),
   every citation and every draft must be there, and citations must belong to the shift's facility
@@ -107,8 +117,9 @@ plans the workflow and ranks eligible clinicians**.
 - **What is verified.** References, eligibility, requested shortlist size and coverage are checked
   by code. Unverified model rationales and summary notes are not displayed or exported; factual
   candidate explanations are rebuilt from evaluation evidence. Policy citations show retrieved
-  facility context, rather than establishing arbitrary prose claims. The clarifying question is
-  still model-written, alongside a source-backed list of matching shifts and exact dates.
+  facility context, rather than establishing arbitrary prose claims. For supported relative
+  dates, code builds the clarification question from recorded shifts and labels dates outside
+  the requested period as alternatives. Other clarification questions remain model-written.
 - **Enforcement.** If repairs run out, the verifier strips whatever is ungrounded and records each
   removal as an issue in the report. Names, warnings, citation text and drafts in the report always
   come from the ledger, never from model text.
@@ -156,7 +167,7 @@ tests below.
 
 ## Testing
 
-`pytest` runs 108 tests offline, including headless Streamlit interactions. They use a hashing embedder and a scripted
+`pytest` runs 125 tests offline, including headless Streamlit interactions. They use a hashing embedder and a scripted
 chat model, so they prove the workflow's control flow and safeguards, not the live model's
 judgement.
 

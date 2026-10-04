@@ -6,6 +6,8 @@ compliant (if less nuanced) shortlist when the LLM is down, misconfigured or mis
 
 from __future__ import annotations
 
+from datetime import date
+
 from shift_assistant.contracts import (
     CandidateRecommendation,
     IssueSeverity,
@@ -16,12 +18,14 @@ from shift_assistant.contracts import (
     VerificationIssue,
 )
 from shift_assistant.domain.models import Shift
+from shift_assistant.intent import relative_date_window
 from shift_assistant.reliability.reporting import (
     alternates,
     candidate_coverage,
     coverage_summary,
     exclusions,
     fill_status,
+    relative_date_clarification,
 )
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.tools.evidence import EvidenceLedger
@@ -40,7 +44,11 @@ class DeterministicFallback:
         self._max_recommendations = max_recommendations
 
     def build_report(
-        self, request: StaffingRequest, ledger: EvidenceLedger, reason: str
+        self,
+        request: StaffingRequest,
+        ledger: EvidenceLedger,
+        reason: str,
+        today: date | None = None,
     ) -> StaffingReport:
         issue = VerificationIssue(
             severity=IssueSeverity.WARNING,
@@ -57,6 +65,23 @@ class DeterministicFallback:
                     "The AI workflow could not finish and no single shift could be identified. "
                     "Select a specific shift and try again."
                 ),
+                issues=[issue],
+            )
+
+        window = relative_date_window(request.text, today) if today is not None else None
+        if not request.shift_id and window is not None and not window.contains(shift.start.date()):
+            assert today is not None
+            clarification = relative_date_clarification(
+                request, [self._toolkit.summarize(shift)], today
+            )
+            assert clarification is not None
+            summary, question = clarification
+            return StaffingReport(
+                request=request,
+                status=ReportStatus.NEEDS_CLARIFICATION,
+                mode=RunMode.FALLBACK,
+                summary=summary,
+                clarification_question=question,
                 issues=[issue],
             )
 

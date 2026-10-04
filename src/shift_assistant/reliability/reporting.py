@@ -7,6 +7,7 @@ the recommendations, alternates and exclusions in the same report.
 from __future__ import annotations
 
 from collections.abc import Collection, Iterable, Sequence
+from datetime import date
 
 from shift_assistant.contracts import (
     AlternateCandidate,
@@ -14,7 +15,9 @@ from shift_assistant.contracts import (
     CandidateRecommendation,
     ExcludedCandidate,
     ReportStatus,
+    StaffingRequest,
 )
+from shift_assistant.intent import relative_date_window
 from shift_assistant.tools.outreach import format_local_datetime, unit_label
 from shift_assistant.tools.schemas import CandidateEvaluation, ShiftSummary
 
@@ -107,6 +110,29 @@ def clarification_summary(shifts: Sequence[ShiftSummary], question: str) -> str:
         for s in sorted(named, key=lambda s: s.start)
     )
     return f"Open shifts found: {listed}."
+
+
+def relative_date_clarification(
+    request: StaffingRequest, shifts: Sequence[ShiftSummary], today: date
+) -> tuple[str, str] | None:
+    """Render relative-date options from evidence instead of trusting the model's question."""
+    window = relative_date_window(request.text, today)
+    if request.shift_id or window is None or not shifts:
+        return None
+    matching = [s for s in shifts if window.contains(s.start.date())]
+    if matching:
+        summary = f"Shifts found for {window.label}. {clarification_summary(matching, '')}"
+        question = f"{summary} Which shift should I staff?"
+    else:
+        summary = (
+            f"None of the shifts found starts {window.label}. "
+            f"Alternatives outside that period: {clarification_summary(shifts, '')}"
+        )
+        question = (
+            f"{summary} Would you like one of these alternatives, or a shift within "
+            "the requested dates?"
+        )
+    return summary, question
 
 
 def shortlist_phrase(recommended: int, positions_open: int) -> str:

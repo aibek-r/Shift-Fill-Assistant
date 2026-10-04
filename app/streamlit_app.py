@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import re
+from html import escape
+from inspect import signature
+from pathlib import Path
+from typing import Any
+
 import streamlit as st
 
 from shift_assistant.agent.llm import unavailable_model
@@ -32,6 +38,19 @@ from shift_assistant.tools.facts import FRIENDLY_NOTES
 from shift_assistant.tools.outreach import format_local_datetime, unit_label
 from shift_assistant.tools.schemas import PolicyExcerpt, ShiftSummary
 
+ASSETS = Path(__file__).parent / "assets"
+CONTENT_WIDTH = 1080
+IMAGE_SUPPORTS_ALT = "alt" in signature(st.image).parameters
+
+
+def display_image(image: str, *, width: int, alt: str) -> None:
+    """Supply accessible image labels when supported, including Streamlit 1.64 compatibility."""
+    options: dict[str, Any] = {"width": width}
+    if IMAGE_SUPPORTS_ALT:
+        options["alt"] = alt
+    st.image(image, **options)
+
+
 EXAMPLES = {
     "ICU night shift": (
         "Find two ICU nurses for the St. Mary's night shift on October 14 "
@@ -44,6 +63,14 @@ EXAMPLES = {
     "Ambiguous request": "Can you find an ICU nurse for St. Mary's next week?",
     "Unknown facility": "Find a nurse for Mercy General tomorrow night.",
     "Nobody eligible": "We need a NICU nurse at Bayview Children's for the October 19 day shift.",
+}
+
+EXAMPLE_DETAILS = {
+    "ICU night shift": (":material/nightlight:", "Two nurses, with outreach drafts"),
+    "PICU shortlist": (":material/pediatrics:", "Pediatric care, with a credential warning"),
+    "Ambiguous request": (":material/help:", "See how the assistant asks for details"),
+    "Unknown facility": (":material/location_on:", "Choose from the available facilities"),
+    "Nobody eligible": (":material/person_search:", "Review the reasons candidates were excluded"),
 }
 
 PROGRESS_LABELS = {
@@ -145,8 +172,17 @@ def get_assistant(simulate_outage: bool) -> ShiftFillAssistant:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Shift Fill Assistant", page_icon=":hospital:", layout="wide")
+    st.set_page_config(
+        page_title="Shift Fill Assistant", page_icon=str(ASSETS / "mark.svg"), layout="wide"
+    )
+    st.logo(str(ASSETS / "logo.svg"), icon_image=str(ASSETS / "mark.svg"), size="large")
     simulate_outage, selected_shift = render_sidebar()
+    with st.container(horizontal_alignment="center"), st.container(width=CONTENT_WIDTH):
+        render_workspace(simulate_outage, selected_shift)
+
+
+def render_workspace(simulate_outage: bool, selected_shift: str | None) -> None:
+    render_header()
     assistant = get_assistant(simulate_outage)
     if assistant.retrieval_degraded:
         st.sidebar.warning(
@@ -154,7 +190,6 @@ def main() -> None:
             "Policy and profile search will be less accurate."
         )
 
-    render_header()
     request = render_request_form(selected_shift)
     if request is not None:
         # Drop the previous result first so a failed run never leaves stale results on screen.
@@ -169,6 +204,8 @@ def main() -> None:
     if report is not None:
         review: OutreachReview = st.session_state["review"]
         render_report(report, review, assistant)
+    else:
+        render_empty_state()
 
 
 def clear_result() -> None:
@@ -178,10 +215,12 @@ def clear_result() -> None:
 
 def render_sidebar() -> tuple[bool, str | None]:
     with st.sidebar:
+        st.caption("Staffing operations")
         if not Settings().llm_enabled:
-            st.warning("No OPENAI_API_KEY: running the deterministic fallback only.")
+            st.warning("AI is unavailable. Shortlists will use the recorded eligibility rules.")
 
-        st.header("Select a shift (optional)")
+        st.subheader("Select a shift", icon=":material/calendar_month:")
+        st.caption("Optional. Pin a shift or let the assistant find it.")
         shifts = get_repository().shifts()
         labels = {
             s.id: f"{s.id} - {unit_label(s.unit)} - {format_local_datetime(s.start)}"
@@ -191,16 +230,16 @@ def render_sidebar() -> tuple[bool, str | None]:
             "Shift",
             options=[None, *labels],
             format_func=lambda sid: "Let the agent find it" if sid is None else labels[sid],
+            key="selected_shift",
             on_change=clear_result,
         )
 
-        st.header("Examples")
+        st.subheader("Try an example", icon=":material/lightbulb:")
         for name, example in EXAMPLES.items():
-            if st.button(name, width="stretch"):
-                st.session_state["request_text"] = example
-                st.session_state.pop("report", None)
-                st.session_state.pop("review", None)
-                st.rerun()
+            icon, description = EXAMPLE_DETAILS[name]
+            with st.container(gap="xsmall"):
+                st.button(name, width="stretch", icon=icon, on_click=use_example, args=(example,))
+                st.caption(description)
 
         with st.expander("Demo controls", icon=":material/science:"):
             simulate_outage = st.toggle(
@@ -208,12 +247,27 @@ def render_sidebar() -> tuple[bool, str | None]:
                 help="Every model call fails, so you can see the deterministic fallback.",
                 on_change=clear_result,
             )
+        render_about()
+        st.caption(":material/lock: Human review before outreach. Delivery is simulated.")
     return simulate_outage, selected
 
 
+def use_example(text: str) -> None:
+    st.session_state["request_text"] = text
+    st.session_state["selected_shift"] = None
+    clear_result()
+
+
 def render_header() -> None:
-    st.title("Shift Fill Assistant")
-    st.caption("Turns a staffing request into a vetted shortlist with outreach drafts.")
+    with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+        display_image(str(ASSETS / "mark.svg"), width=56, alt="Shift Fill calendar and checkmark")
+        with st.container(width="content", gap=None):
+            st.caption("YOUR STAFFING WORKSPACE")
+            st.title("Shift Fill Assistant")
+    st.markdown("Find eligible clinicians. Review the shortlist. Make the next shift happen.")
+
+
+def render_about() -> None:
     with st.expander("About this assistant", icon=":material/info:"):
         st.markdown(
             "- **Compliance is rule-based.** Licensure, certifications, experience, "
@@ -228,15 +282,19 @@ def render_header() -> None:
 
 def render_request_form(selected_shift: str | None) -> StaffingRequest | None:
     # Inside a form, Ctrl/Cmd+Enter in the text area submits the request.
-    with st.form("request_form", border=False):
+    with st.form("request_form", border=True):
+        st.subheader("What shift do you need to fill?", icon=":material/edit_note:")
+        st.caption("Include the facility, unit, date and number of clinicians you need.")
         text = st.text_area(
             "Staffing request",
             key="request_text",
-            height=90,
+            height=110,
             placeholder="e.g. Find two ICU nurses for the St. Mary's night shift on October 14.",
         )
         with st.container(horizontal=True, vertical_alignment="center"):
-            submitted = st.form_submit_button("Run assistant", type="primary")
+            submitted = st.form_submit_button(
+                "Run assistant", type="primary", icon=":material/auto_awesome:"
+            )
             st.caption("or press **Ctrl+Enter** (**⌘+Enter** on Mac)")
     if not submitted:
         return None
@@ -249,6 +307,26 @@ def render_request_form(selected_shift: str | None) -> StaffingRequest | None:
     except ValueError as exc:
         st.error(f"Invalid request: {exc}")
         return None
+
+
+def render_empty_state() -> None:
+    with (
+        st.container(border=True, gap="small"),
+        st.container(horizontal=True, vertical_alignment="center", gap="medium"),
+    ):
+        display_image(
+            str(ASSETS / "workflow.svg"),
+            width=260,
+            alt="A shift calendar, checked clinician profile, and outreach message",
+        )
+        with st.container(width=550, gap="xsmall"):
+            st.subheader("A clear path from open shift to shortlist")
+            st.caption("Start with a request above, or choose an example in the sidebar.")
+            st.markdown(
+                ":blue-badge[:material/calendar_month: Find shift] "
+                ":blue-badge[:material/verified_user: Check eligibility] "
+                ":blue-badge[:material/mail: Review outreach]"
+            )
 
 
 def run_with_progress(assistant: ShiftFillAssistant, request: StaffingRequest) -> StaffingReport:
@@ -273,8 +351,11 @@ def progress_label(event: TraceEvent) -> str:
 def render_report(
     report: StaffingReport, review: OutreachReview, assistant: ShiftFillAssistant
 ) -> None:
-    show, icon, label = STATUS_STYLE[report.status]
-    show(f"**{label}:** {status_message(report)}", icon=icon)
+    if report.status is ReportStatus.NEEDS_CLARIFICATION:
+        render_clarification(report, assistant)
+    else:
+        show, icon, label = STATUS_STYLE[report.status]
+        show(f"**{label}:** {status_message(report)}", icon=icon)
     render_action_items(report)
     st.markdown(f"**Summary:** {report.summary}")
     color, mode_icon, mode, explanation = MODE_LABELS[report.mode]
@@ -320,6 +401,66 @@ def render_report(
             )
 
     render_technical_details(report, review)
+
+
+def render_clarification(report: StaffingReport, assistant: ShiftFillAssistant) -> None:
+    question = report.clarification_question or "Update the request with a facility and shift date."
+    normalized = re.sub(r"[^a-z0-9]", "", question.casefold())
+    facilities = (
+        [
+            facility
+            for facility in assistant.repository.facilities()
+            if re.sub(r"[^a-z0-9]", "", facility.name.casefold()) in normalized
+        ]
+        if report.request.shift_id is None
+        else []
+    )
+    with st.container(border=True):
+        st.subheader(
+            "Choose a facility" if len(facilities) > 1 else "One detail to confirm",
+            icon=":material/help:",
+        )
+        if len(facilities) > 1:
+            st.caption("Choose a facility to update your request, then run the assistant again.")
+            with st.expander("Clarification details", icon=":material/info:"):
+                st.write(question)
+            with st.container(horizontal=True, gap="small"):
+                for facility in facilities:
+                    with st.container(border=True, width=300, gap="xsmall"):
+                        st.markdown(f"**{facility.name}**")
+                        st.caption(f"{facility.city}, {facility.state}")
+                        st.button(
+                            "Use this facility",
+                            key=f"clarify-{facility.id}",
+                            icon=":material/location_on:",
+                            width="stretch",
+                            on_click=use_facility,
+                            args=(report, facility.name),
+                        )
+        else:
+            st.write(question)
+
+
+def use_facility(report: StaffingReport, facility_name: str) -> None:
+    if st.session_state.get("report") is not report:
+        return  # Ignore a click from a report that has already been replaced.
+    text = report.request.text
+    # Replace the rejected facility only when the tool's own error identifies it exactly.
+    for event in report.trace:
+        if event.name != "find_open_shifts":
+            continue
+        if (
+            match := re.search(r"No facility matches '(.+)'\. Known facilities:", event.detail)
+        ) and re.search(re.escape(match[1]), text, re.IGNORECASE):
+            text = re.sub(
+                re.escape(match[1]), lambda _: facility_name, text, count=1, flags=re.IGNORECASE
+            )
+            break
+    else:
+        text += f"\nFacility clarification: use {facility_name} for this request."
+    st.session_state["request_text"] = text
+    st.session_state["selected_shift"] = None
+    clear_result()
 
 
 def status_message(report: StaffingReport) -> str:
@@ -412,7 +553,7 @@ def render_counts(report: StaffingReport) -> None:
     # A wrapping row: four across on desktop, two per line on a phone.
     with st.container(horizontal=True, horizontal_alignment="distribute", gap="medium"):
         for label, value, explanation in counts:
-            st.metric(label, value, help=explanation, width=140)
+            st.metric(label, value, help=explanation, width=220, border=True)
 
 
 def vetting_note(report: StaffingReport) -> str:
@@ -452,7 +593,15 @@ def render_recommendation(
     rec: CandidateRecommendation, review: OutreachReview, assistant: ShiftFillAssistant
 ) -> None:
     with st.container(border=True):
-        st.subheader(f"#{rec.rank} {rec.clinician_name} :gray[({rec.clinician_id})]")
+        with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+            display_image(
+                initials_avatar(rec.clinician_name),
+                width=48,
+                alt=f"Initials avatar for {rec.clinician_name}",
+            )
+            with st.container(width="content", gap=None):
+                st.subheader(f"#{rec.rank} {rec.clinician_name}")
+                st.caption(f"{rec.clinician_id} · Recommended for review")
         if badges := credential_badges(rec.credentials):
             st.markdown(badges)
         for warning in rec.warnings:  # stays visible: it needs action before the shift
@@ -473,9 +622,26 @@ def source_title(citation: PolicyExcerpt) -> str:
 
 
 def render_candidate_row(name: str, clinician_id: str, badges: str, notes: list[str]) -> None:
-    st.markdown(f"**{name}** ({clinician_id}) {badges}")
-    if notes:
-        st.caption(" · ".join(notes))
+    with st.container(border=True, gap="xsmall"):
+        with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+            display_image(initials_avatar(name), width=36, alt=f"Initials avatar for {name}")
+            st.markdown(f"**{name}** :gray[{clinician_id}]")
+        if badges:
+            st.markdown(badges)
+        if notes:
+            st.caption(" · ".join(notes))
+
+
+def initials_avatar(name: str) -> str:
+    parts = name.split()
+    initials = "".join(part[0] for part in (parts[:1] + parts[-1:] if len(parts) > 1 else parts))
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">'
+        '<rect width="48" height="48" rx="15" fill="#EAF5F3"/>'
+        '<text x="24" y="30" text-anchor="middle" fill="#115E59" '
+        'font-family="Arial, sans-serif" font-size="16" font-weight="700">'
+        f"{escape(initials.upper() or '?')}</text></svg>"
+    )
 
 
 # --- Outreach review ----------------------------------------------------------------------------

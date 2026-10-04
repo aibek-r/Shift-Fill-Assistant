@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="150" viewBox="0 0 360 150" role="img" aria-label="A shift calendar, checked clinician profile, and outreach message">
+  <rect x="4" y="10" width="352" height="130" rx="28" fill="#F3F7F7"/>
+  <path d="M91 75H133M211 75H253" fill="none" stroke="#B9D5D0" stroke-width="2.5" stroke-dasharray="4 5"/>
+  <rect x="25" y="42" width="66" height="66" rx="15" fill="#FFFFFF" stroke="#DBE6E6"/>
+  <rect x="41" y="58" width="34" height="33" rx="6" fill="none" stroke="#0F766E" stroke-width="2"/>
+  <path d="M41 68H75M50 54V62M66 54V62M51 78H56M62 78H67" fill="none" stroke="#0F766E" stroke-width="2" stroke-linecap="round"/>
+  <rect x="147" y="32" width="66" height="86" rx="15" fill="#FFFFFF" stroke="#DBE6E6"/>
+  <circle cx="180" cy="58" r="9" fill="#DDEEEA"/>
+  <path d="M166 78C166 66 194 66 194 78M166 96H179" fill="none" stroke="#0F766E" stroke-width="2.2" stroke-linecap="round"/>
+  <circle cx="203" cy="105" r="13" fill="#0F766E"/>
+  <path d="M197 105L201 109L209 101" fill="none" stroke="#FFFFFF" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="269" y="42" width="66" height="66" rx="15" fill="#FFFFFF" stroke="#DBE6E6"/>
+  <rect x="284" y="62" width="36" height="26" rx="5" fill="none" stroke="#0F766E" stroke-width="2"/>
+  <path d="M286 65L302 76L318 65" fill="none" stroke="#0F766E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

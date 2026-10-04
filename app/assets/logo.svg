@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="286" height="48" viewBox="0 0 286 48" role="img" aria-label="Shift Fill staffing workspace">
+  <rect width="48" height="48" rx="13" fill="#0F766E"/>
+  <rect x="10" y="13" width="28" height="26" rx="5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+  <path d="M10 21H38M17 10V16M31 10V16" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"/>
+  <path d="M18 29L23 34L32 26" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="62" y="24" fill="#182D36" font-family="Arial, sans-serif" font-size="23" font-weight="700">Shift Fill</text>
+  <text x="63" y="41" fill="#52666F" font-family="Arial, sans-serif" font-size="12" letter-spacing="1.1">STAFFING WORKSPACE</text>
+</svg>
