@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
 from pydantic import ValidationError
 
@@ -81,8 +81,8 @@ class ShiftFillAssistant:
         metrics = RunMetrics(
             llm_calls=final["llm_calls"],
             tool_calls=sum(1 for e in trace if e.kind == "tool"),
-            input_tokens=sum(e.input_tokens or 0 for e in trace),
-            output_tokens=sum(e.output_tokens or 0 for e in trace),
+            input_tokens=_reported_sum(e.input_tokens for e in trace),
+            output_tokens=_reported_sum(e.output_tokens for e in trace),
             duration_ms=round((time.perf_counter() - started) * 1000),
         )
         report = final["report"]
@@ -159,6 +159,12 @@ def build_assistant(
     return ShiftFillAssistant(
         settings, repository, deps, toolkit, retrieval_degraded=not embedder.semantic
     )
+
+
+def _reported_sum(values: Iterable[int | None]) -> int | None:
+    """Token usage is unavailable (None), not zero, when no model call reported it."""
+    reported = [v for v in values if v is not None]
+    return sum(reported) if reported else None
 
 
 def policy_min_score(settings: Settings, embedder: Embedder) -> float:

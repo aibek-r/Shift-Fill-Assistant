@@ -121,6 +121,8 @@ def test_markdown_and_json_identify_code_additions(scripted_assistant: Assistant
     assert "- Recommendations added by code: C-101" in markdown
     assert [r.selected_by for r in exported.recommendations] == [MODEL, CODE]
     assert exported.completion == report.completion
+    # The scripted model reports no usage: it is unavailable, not zero.
+    assert report.metrics.input_tokens is None and "token usage unavailable" in markdown
 
 
 def test_pool_never_searched_is_computed_by_code_and_fully_evaluated(

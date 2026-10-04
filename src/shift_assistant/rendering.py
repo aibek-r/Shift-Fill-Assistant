@@ -107,6 +107,7 @@ def render_markdown(report: StaffingReport) -> str:
         lines.append("All references were verified against tool evidence.")
 
     m = report.metrics
+    tokens = "token usage unavailable" if m.total_tokens is None else f"{m.total_tokens} tokens"
     lines += [
         "",
         "## Trace",
@@ -115,7 +116,7 @@ def render_markdown(report: StaffingReport) -> str:
         *(format_event(e) for e in report.trace),
         "```",
         "",
-        f"{m.llm_calls} LLM calls, {m.tool_calls} tool calls, "
-        f"{m.input_tokens + m.output_tokens} tokens, {m.duration_ms / 1000:.1f}s.",
+        f"{m.llm_calls} LLM calls, {m.tool_calls} tool calls, {tokens}, "
+        f"{m.duration_ms / 1000:.1f}s.",
     ]
     return "\n".join(lines) + "\n"

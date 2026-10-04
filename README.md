@@ -205,8 +205,11 @@ Ranking quality and the rate of grounding problems still need live evaluation. T
 reports were regenerated after these fixes using the paid model and real local embeddings;
 the outage example uses the deterministic fallback.
 
-`ruff check`, `ruff format --check` and `mypy --strict` all pass on `src/`, `app/`, `scripts/`
-and `tests/`.
+`python -m evals.run` runs the offline evaluation harness (10 cases, scripted agent and rules-only
+fallback) and writes `evals/results/<timestamp>.md`; see [docs/design.md](docs/design.md).
+
+`ruff check`, `ruff format --check` and `mypy --strict` all pass on `src/`, `app/`, `scripts/`,
+`tests/` and `evals/`.
 
 ## Configuration
 

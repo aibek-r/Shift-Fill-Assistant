@@ -167,3 +167,32 @@ keeps its existing conservative order: fewest credential warnings, then experien
 then openness, only **breaks ties** after both, so a self-reported preference never outranks
 credential risk or recorded experience. The rule-based fallback, and the rule-based additions
 from deterministic completion, therefore rank more by risk than by fit.
+
+## Offline evaluation
+
+`python -m evals.run` runs 10 cases (`evals/cases.py`) through up to two labelled execution
+paths: the **agent with a scripted model** and the **rules-only fallback** (no API key). It
+writes `evals/results/<timestamp>.md` and exits non-zero if any check fails.
+
+- **Expectations are independent of the scripts.** Each case states, from the mock records, the
+  status, the shift, the full pool's eligible clinicians, the accepted shortlist orders (several
+  when the evidence does not establish one order) and the outreach intent. Scripts only fix what
+  the "model" does, including lazy and compromised turns.
+- **Scored per run:** status, shift resolution, eligibility (recommendations within the eligible
+  set, and the eligible set matched exactly only when the whole pool was vetted, so an evaluated
+  subset is never mistaken for the pool), ranking, outreach, surfaced credential warnings, and
+  privacy (no contact details, license numbers, forbidden text, or other clinicians' names in a
+  draft).
+- **Reported per path:** grounding issues, submissions failing validation (repairs),
+  deterministic completion, fallback rate, median latency and token usage. Scripted and rules-only
+  runs report no token usage, so it is shown as unavailable, not zero.
+- **Frozen inputs:** each case pins its reference date, and runs use the `HashingEmbedder`.
+  Offline runs never read `.env` or the API key.
+- `python -m evals.run --live` runs the agent path against the real model and the local
+  embedding model, and refuses to start without `OPENAI_API_KEY`. It has not been run.
+
+**What it does not show.** Scripted runs validate orchestration and safeguards: tool routing,
+validation, completion, verification, fallback and status logic. They do not measure live model
+reasoning, ranking quality or real retrieval quality. The injection case shows that the
+safeguards hold when a scripted model obeys one malicious profile instruction; it is not proof of
+general prompt-injection resistance. Offline latency says nothing about live latency.

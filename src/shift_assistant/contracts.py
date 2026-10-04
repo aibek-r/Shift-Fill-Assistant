@@ -166,9 +166,15 @@ class CompletionRecord(BaseModel):
 class RunMetrics(BaseModel):
     llm_calls: int = 0
     tool_calls: int = 0
-    input_tokens: int = 0
-    output_tokens: int = 0
+    input_tokens: int | None = Field(default=None, description="None when no call reported usage.")
+    output_tokens: int | None = Field(default=None, description="None when no call reported usage.")
     duration_ms: int = 0
+
+    @property
+    def total_tokens(self) -> int | None:
+        if self.input_tokens is None and self.output_tokens is None:
+            return None
+        return (self.input_tokens or 0) + (self.output_tokens or 0)
 
 
 class OutreachApproval(BaseModel):

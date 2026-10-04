@@ -588,8 +588,13 @@ def render_technical_details(report: StaffingReport, review: OutreachReview) -> 
             cols = st.columns(5)
             cols[0].metric("LLM calls", m.llm_calls)
             cols[1].metric("Tool calls", m.tool_calls)
-            cols[2].metric("Input tokens", f"{m.input_tokens:,}")
-            cols[3].metric("Output tokens", f"{m.output_tokens:,}")
+            unavailable = "n/a"  # no model call reported usage; not zero
+            cols[2].metric(
+                "Input tokens", unavailable if m.input_tokens is None else f"{m.input_tokens:,}"
+            )
+            cols[3].metric(
+                "Output tokens", unavailable if m.output_tokens is None else f"{m.output_tokens:,}"
+            )
             cols[4].metric("Elapsed time (s)", f"{m.duration_ms / 1000:.1f}")
         with raw:
             payload = review.export_report(report).model_dump_json(indent=2)
