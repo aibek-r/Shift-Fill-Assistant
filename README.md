@@ -208,7 +208,7 @@ fields transcribed from each profile.
 - Mock data only; no authentication, persistent audit trail, PII redaction of free-text
   profiles, or real message delivery. Docker was not verified here.
 
-More in [docs/design.md](docs/design.md#known-limitations-and-unverified-behavior).
+More in [docs/design.md](docs/design.md#known-limitations-and-defects).
 
 ## Next steps
 
