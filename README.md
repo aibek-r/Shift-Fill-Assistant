@@ -196,7 +196,7 @@ harness cover them. [docs/DEMO.md](docs/DEMO.md) is a five-minute demo guide.
 ## Testing and evaluation
 
 ```bash
-pytest                                               # 395 offline tests
+pytest                                               # 401 offline tests
 python -m evals.run                                  # 10 cases x (scripted agent, fallback)
 ruff check src app scripts tests evals
 ruff format --check src app scripts tests evals

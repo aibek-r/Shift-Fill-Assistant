@@ -81,7 +81,6 @@ EXAMPLE_DETAILS = {
     "What can you do?": (":material/waving_hand:", "See what the assistant can help with"),
     "Off-topic question": (":material/block:", "See a polite refusal"),
 }
-MAX_MESSAGES = 20  # conversation turns kept on screen
 
 PROGRESS_LABELS = {
     "llm": "planning the next step",
@@ -224,58 +223,41 @@ def render_workspace(simulate_outage: bool, selected_shift: str | None) -> None:
             "Policy and profile search will be less accurate."
         )
 
-    conversation = st.container()  # above the form; filled after it, so new replies appear here
+    # Top to bottom: header, message form, then the one current answer. The typed text stays in
+    # the form, so the question is not repeated in a user bubble.
     request = render_request_form(selected_shift)
     if request is not None:
-        with conversation:
-            response = run_with_progress(assistant, request)
-        record_response(response)
-    with conversation:
-        render_conversation(assistant)
+        record_response(run_with_progress(assistant, request))
+    render_answer(assistant)
 
 
 def record_response(response: AssistantResponse) -> None:
-    history: list[AssistantResponse] = st.session_state.setdefault("messages", [])
-    history.append(response)
-    del history[:-MAX_MESSAGES]
+    """Keep only the newest answer; it survives the reruns its own buttons cause."""
+    st.session_state["response"] = response
     if response.report is not None:
-        # Only the newest staffing report is interactive. A new run gets a new review, so no
-        # approval carries over from an earlier result.
+        # A new run gets a new review, so no approval carries over from an earlier result.
         st.session_state["report"] = response.report
         st.session_state["review"] = OutreachReview.for_report(response.report)
 
 
-def render_conversation(assistant: ShiftFillAssistant) -> None:
-    history: list[AssistantResponse] = st.session_state.get("messages", [])
-    if not history:
+def render_answer(assistant: ShiftFillAssistant) -> None:
+    response: AssistantResponse | None = st.session_state.get("response")
+    if response is None:
         render_empty_state()
         return
-    for index, response in enumerate(history):
-        with st.chat_message("user"):
-            st.markdown(escape_markdown(response.request.text) or ":gray[(empty message)]")
-        with st.chat_message("assistant"):
-            render_response(response, assistant, latest=index == len(history) - 1)
+    with st.chat_message("assistant"):
+        render_response(response, assistant)
 
 
-def render_response(
-    response: AssistantResponse, assistant: ShiftFillAssistant, *, latest: bool
-) -> None:
+def render_response(response: AssistantResponse, assistant: ShiftFillAssistant) -> None:
     """Template replies show their text and examples; staffing runs show the report."""
-    report = response.report
-    if report is not None:
-        interactive = report is st.session_state.get("report")
-        if interactive:
-            render_report(report, st.session_state["review"], assistant)
-        else:
-            render_earlier_report(report)
+    if response.report is not None:
+        render_report(response.report, st.session_state["review"], assistant)
         return
     st.markdown(response.message)  # fixed template text, never user or model text
     if not response.examples:
         return
     st.caption("Try one of these:")
-    if not latest:
-        st.markdown("\n".join(f"- {escape_markdown(example)}" for example in response.examples))
-        return
     for number, example in enumerate(response.examples):
         st.button(
             example,
@@ -286,21 +268,10 @@ def render_response(
         )
 
 
-def render_earlier_report(report: StaffingReport) -> None:
-    _, icon, label = STATUS_STYLE[report.status]
-    text = report.clarification_question or report.summary
-    st.markdown(f"{icon} **{label}.** {escape_markdown(text)}")
-    st.caption("Earlier result. Only the latest result shows candidates, drafts and approvals.")
-
-
 def clear_result() -> None:
-    st.session_state.pop("report", None)
-    st.session_state.pop("review", None)
-
-
-def new_conversation() -> None:
-    st.session_state.pop("messages", None)
-    clear_result()
+    """Drop the current answer, e.g. when the shift, mode or request text changes."""
+    for key in ("response", "report", "review"):
+        st.session_state.pop(key, None)
 
 
 def render_sidebar() -> tuple[bool, str | None]:
@@ -312,7 +283,7 @@ def render_sidebar() -> tuple[bool, str | None]:
             "New conversation",
             icon=":material/add_comment:",
             width="stretch",
-            on_click=new_conversation,
+            on_click=clear_result,
         )
 
         st.subheader("Select a shift", icon=":material/calendar_month:")

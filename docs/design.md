@@ -103,12 +103,14 @@ details and license numbers.
 
 **Interfaces.**
 
-- **Streamlit UI:** a chat view (`st.chat_message`) above the message form, an optional shift
-  selector, example requests, a "New conversation" button, a simulated-outage toggle (which also
-  takes down the router model) and live progress. Help, refusal and clarification replies show
-  their template text and clickable example requests. Only the newest staffing report is
-  interactive; earlier ones collapse to a one-line summary, so no approval carries over. The
-  report shows a status banner, action items, counts, and
+- **Streamlit UI:** top to bottom, the header, the message form and one answer in an assistant
+  `st.chat_message`. The typed text stays in the form, so it is not echoed in a user bubble; a
+  new run replaces the answer, and the answer is kept in session state across the reruns its own
+  buttons cause. The sidebar has an optional shift selector, example requests, a "New
+  conversation" button that clears the answer, and a simulated-outage toggle (which also takes
+  down the router model). Help, refusal and clarification replies show their template text and
+  clickable example requests that fill in the form. The report shows a status banner, action
+  items, counts, and
   Recommendations / Alternates / Excluded tabs. Clarifications can offer facility cards. Each
   draft has an editor with one-click suggestions and approval. Technical details hold the
   verification issues, the trace and a JSON download that includes saved edits and approval
