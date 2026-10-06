@@ -19,10 +19,12 @@ from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import BaseMessage
 from langchain_core.runnables import Runnable, RunnableLambda
 from langchain_openai import ChatOpenAI
+from pydantic import BaseModel
 
 from shift_assistant.config import Settings
 
 ToolCallingModel = Runnable[LanguageModelInput, BaseMessage]
+StructuredModel = Runnable[LanguageModelInput, Any]  # parsed output; validated by the caller
 Clock = Callable[[], float]  # monotonic seconds, e.g. time.monotonic
 Sleep = Callable[[float], None]
 
@@ -104,22 +106,42 @@ def build_chat_model(
     """Return a tool-bound model, or None when no API key is configured (fallback mode)."""
     if not settings.llm_enabled:
         return None
-    reasoning: dict[str, Any] = {}
-    if settings.openai_reasoning_effort:
-        # OpenAI supports reasoning together with function tools only on the Responses API.
-        reasoning = {
-            "use_responses_api": True,
-            "reasoning": {"effort": settings.openai_reasoning_effort},
-        }
     model = ChatOpenAI(
         model=settings.openai_model,
         api_key=settings.openai_api_key,
         timeout=settings.llm_timeout_seconds,
         max_retries=0,  # retries run in invoke_within_budget, so backoff counts against the budget
-        **reasoning,
+        **_reasoning(settings.openai_reasoning_effort),
     )
     # tool_choice="required": every turn is a tool call, and the run ends via the submit tool.
+    # Only staffing requests reach this model; the intent router answers everything else.
     return model.bind_tools(list(tool_schemas), tool_choice="required", parallel_tool_calls=True)
+
+
+def build_router_model(
+    settings: Settings, output_schema: type[BaseModel]
+) -> StructuredModel | None:
+    """Return a tool-free model that answers with `output_schema`, or None without an API key.
+
+    One attempt with a short timeout: when it fails, the keyword router answers instead.
+    """
+    if not settings.llm_enabled:
+        return None
+    model = ChatOpenAI(
+        model=settings.router_model or settings.openai_model,
+        api_key=settings.openai_api_key,
+        timeout=settings.router_timeout_seconds,
+        max_retries=0,
+        **_reasoning(settings.router_reasoning_effort),
+    )
+    return model.with_structured_output(output_schema, method="json_schema", strict=True)
+
+
+def _reasoning(effort: str | None) -> dict[str, Any]:
+    if not effort:
+        return {}
+    # OpenAI supports reasoning together with function tools only on the Responses API.
+    return {"use_responses_api": True, "reasoning": {"effort": effort}}
 
 
 def unavailable_model(reason: str = "simulated LLM outage") -> ToolCallingModel:

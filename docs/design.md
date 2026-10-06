@@ -3,13 +3,61 @@
 How the Shift Fill Assistant works, and the decisions and trade-offs behind it. The README keeps
 the overview and setup.
 
-Contents: [architecture and workflow](#architecture-and-workflow) ·
+Contents: [front door](#front-door-input-guard-and-intent-router) ·
+[architecture and workflow](#architecture-and-workflow) ·
 [boundaries](#what-code-decides-and-what-the-model-decides) ·
 [statuses](#report-status-and-completion-conditions) ·
 [completion and provenance](#deterministic-completion) ·
 [model budget](#model-execution-budget) · [fallback resolution](#fallback-shift-resolution) ·
 [preferences](#shift-preferences) · [outreach notes](#outreach-notes) ·
 [evaluation](#offline-evaluation) · [limitations](#known-limitations-and-defects)
+
+## Front door: input guard and intent router
+
+`ShiftFillAssistant.ask(AssistantRequest) -> AssistantResponse` handles every coordinator
+message: input guard, intent router, then exactly one handler. Before it existed, every message
+was forced into the staffing workflow, whose model must finish with `submit_recommendation`
+(`tool_choice="required"`), so "hi" or "what is the weather?" could only end in a staffing
+clarification. The agent is unchanged; such messages no longer reach it.
+
+1. **Input guard** (`guards/input_guard.py`). Folds Unicode compatibility forms (NFKC), turns
+   `\r\n` into `\n`, and removes control, zero-width and text-direction characters, which can
+   hide text from a reader while a model still reads it. Every later step sees only the cleaned
+   text. Length is limited by the contract (2,000 characters). Injection, personal-data and
+   rate-limit checks are not built yet; they will block from here.
+2. **Intent router** (`router.py`), in order:
+   - Fast rules, no AI: empty text, greetings, thanks and help questions ("what can you do") that
+     make up the whole message. "Hi, find two ICU nurses ..." is not caught here.
+   - The router model: one structured-output call (`RouterOutput`, strict JSON schema, no
+     tools) returning an intent, a confidence, a reason and entities (facility, unit, shift
+     date, clinician name, shift ID). The output is untrusted: the confidence is clamped, a
+     reason that does not fit the intent is replaced by the intent's default, malformed dates and
+     shift IDs are dropped, and facility, clinician and shift entities that do not appear in the
+     message are dropped. It runs once with `ROUTER_TIMEOUT_SECONDS`; any failure or invalid
+     output falls through to the keyword rules, and only the exception class is logged.
+   - Keyword rules (`keyword_route`), used without an API key or after a router-model failure.
+     Medical-advice and legal-advice patterns come first, then one pattern set per in-scope
+     intent and an off-topic list. One clear match scores 0.85; several in-scope matches, or
+     in-scope plus off-topic, score 0.5-0.6; no match scores 0.4. A pinned shift or typed shift
+     details make a staffing request likely, but a message that names nothing about staffing
+     ("x") still gets a question.
+3. **Handler.** Below `ROUTER_MIN_CONFIDENCE` (0.7) the reply is one clarifying question.
+   Otherwise:
+
+| Intent | Reply (`kind`) |
+| --- | --- |
+| `help` | Help template: what the assistant can do, with working example requests (`help`) |
+| `out_of_scope` | Polite refusal plus capabilities; medical and legal questions are referred to a clinician or the legal team (`refusal`) |
+| `blocked` | Short refusal (`refusal`) |
+| `fill_shift` | The staffing workflow below, unchanged; its `StaffingReport` is kept whole (`staffing_report`) |
+| `credential_check`, `eligibility_check`, `shift_lookup`, `policy_question` | Recognized, answered with "not available yet" (`help`) until their read-only handlers exist |
+
+Every reply other than a staffing report is a fixed template in `templates.py`. The router only
+classifies: router entities are hints for future handlers, and the staffing workflow still
+parses the original text and typed fields, so a routing mistake cannot change which shift is
+staffed. Each response records the routing decision (`routing.method`, `confidence`,
+`fallback_reason`) for evaluation. Logs carry the intent, method and confidence, never the
+message text.
 
 ## Architecture and workflow
 
@@ -43,7 +91,8 @@ details and license numbers.
 
 | Area | Modules |
 | --- | --- |
-| Contracts and intent | `contracts.py` (request, report, statuses, provenance), `intent.py` (counts, outreach intent, dates, units, shift period) |
+| Front door | `guards/input_guard.py`, `router.py` (fast rules, router model, keyword rules), `templates.py` (help, refusals, questions, input errors) |
+| Contracts and intent | `contracts.py` (assistant request and response, routing decision, staffing request and report, statuses, provenance), `intent.py` (counts, outreach intent, dates, units, shift period) |
 | Domain and data | `domain/models.py`, `domain/eligibility.py`, `repository.py`, `data/` |
 | Retrieval | `retrieval/embedder.py` (local `bge-small` via fastembed, with a keyword `HashingEmbedder` fallback), `vector_index.py`, `knowledge.py` |
 | Tools | `tools/schemas.py`, `toolkit.py`, `registry.py`, `evidence.py`, `outreach.py` (draft template), `facts.py` (explanations, `period_fit`), `notes.py` (note rules) |
@@ -54,14 +103,19 @@ details and license numbers.
 
 **Interfaces.**
 
-- **Streamlit UI:** request form, optional shift selector, example requests, a simulated-outage
-  toggle, and live progress. The report shows a status banner, action items, counts, and
+- **Streamlit UI:** a chat view (`st.chat_message`) above the message form, an optional shift
+  selector, example requests, a "New conversation" button, a simulated-outage toggle (which also
+  takes down the router model) and live progress. Help, refusal and clarification replies show
+  their template text and clickable example requests. Only the newest staffing report is
+  interactive; earlier ones collapse to a one-line summary, so no approval carries over. The
+  report shows a status banner, action items, counts, and
   Recommendations / Alternates / Excluded tabs. Clarifications can offer facility cards. Each
   draft has an editor with one-click suggestions and approval. Technical details hold the
   verification issues, the trace and a JSON download that includes saved edits and approval
   states.
-- **CLI:** `shift-assistant "<request>" [--shift --facility --unit --date --json --save]`
-  prints Markdown or JSON and exits with 1 for a `failed` report.
+- **CLI:** `shift-assistant "<message>" [--shift --facility --unit --date --json --save]`
+  answers through `ask`, prints Markdown or the `AssistantResponse` JSON, exits with 1 for a
+  `failed` staffing report, and reports invalid input in plain English (exit code 2).
 - **Report:** status, mode, a code-built summary, the shift, recommendations with provenance,
   alternates, exclusions with reason codes, coverage counts, a completion record, issues, a
   trace and metrics.
@@ -356,6 +410,10 @@ These were reproduced without an API key, with the rules-only fallback or a scri
 
 ### Limitations
 
+- **The router model is untested live.** Offline tests use a fake that returns `RouterOutput`
+  values; the strict schema was checked with the OpenAI SDK's converter, not against the API.
+  Keyword routing is deliberately narrow: it asks rather than guesses, so unusual phrasing gets
+  a question without an API key.
 - **Live behavior of the current code is unverified here.** This repository contains no
   live-model results for the current code. Deterministic completion, the budget and retry
   policy, the preference rubric, the free-text note rules and the prompt changes were tested with

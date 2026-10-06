@@ -1,20 +1,40 @@
-"""Public entry point: wires the components together and runs a request end to end."""
+"""Public entry point: wires the components together and answers a request end to end.
+
+`ask` is the front door for any coordinator message: input guard, intent router, then one
+handler (a fixed template or the staffing workflow). `run` is the staffing workflow itself.
+"""
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable, Iterable
 
 from pydantic import ValidationError
 
+from shift_assistant import templates
 from shift_assistant.agent.graph import AgentDependencies, build_agent_graph
-from shift_assistant.agent.llm import Clock, Sleep, ToolCallingModel, build_chat_model
+from shift_assistant.agent.llm import (
+    Clock,
+    Sleep,
+    StructuredModel,
+    ToolCallingModel,
+    build_chat_model,
+    build_router_model,
+)
 from shift_assistant.agent.prompts import build_initial_messages
 from shift_assistant.agent.state import AgentState, initial_state
 from shift_assistant.agent.submission import submission_tool_schema
 from shift_assistant.config import Settings
 from shift_assistant.contracts import (
+    AssistantRequest,
+    AssistantResponse,
+    Intent,
+    IntentDecision,
     IssueSeverity,
+    ReplyReason,
+    ResponseKind,
+    RoutingMethod,
     RunMetrics,
     StaffingReport,
     StaffingRequest,
@@ -22,17 +42,24 @@ from shift_assistant.contracts import (
     VerificationIssue,
 )
 from shift_assistant.domain.eligibility import EligibilityEngine
+from shift_assistant.guards.input_guard import GuardVerdict, InputGuard
 from shift_assistant.reliability.completion import DeterministicCompletion
 from shift_assistant.reliability.fallback import DeterministicFallback
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.retrieval.embedder import Embedder, create_embedder
 from shift_assistant.retrieval.knowledge import ClinicianProfileIndex, PolicyKnowledgeBase
+from shift_assistant.router import IntentRouter, RouterOutput
 from shift_assistant.tools.outreach import draft_id_for
 from shift_assistant.tools.registry import build_tool_registry, describe_validation_error
 from shift_assistant.tools.schemas import DraftOutreachArgs, OutreachDraft
 from shift_assistant.tools.toolkit import StaffingToolkit
 
+logger = logging.getLogger(__name__)
+
 EventHandler = Callable[[TraceEvent], None]
+
+# Intents with a working handler. Other in-scope intents get a "not available yet" reply.
+HANDLED_INTENTS: tuple[Intent, ...] = (Intent.FILL_SHIFT,)
 
 
 class ShiftFillAssistant:
@@ -43,18 +70,99 @@ class ShiftFillAssistant:
         deps: AgentDependencies,
         toolkit: StaffingToolkit,
         retrieval_degraded: bool = False,
+        router: IntentRouter | None = None,
     ) -> None:
         self.settings = settings
         self.repository = repository
         self.toolkit = toolkit
+        self.router = router or IntentRouter(repository, settings, model=None)
         # True when the sentence-embedding model failed to load and keyword matching stands in.
         self.retrieval_degraded = retrieval_degraded
         self.llm_enabled = deps.model is not None
+        self._guard = InputGuard()
         self._clock = deps.clock
         self._graph = build_agent_graph(deps)
         # Each LLM call costs two graph steps (agent, then tools or validate); the run ends with
         # at most two more (complete and verify, or fallback). The limit leaves ample slack.
         self._recursion_limit = settings.max_agent_steps * 3 + 10
+
+    def ask(
+        self, request: AssistantRequest, on_event: EventHandler | None = None
+    ) -> AssistantResponse:
+        """Answer one coordinator message: input guard, intent router, then one handler.
+
+        Only staffing requests reach the agent workflow. Every other reply is a fixed template,
+        so the model never answers, refuses or asks a question in its own words here.
+        """
+        started = time.perf_counter()
+        guarded = self._guard.check(request.text)
+        message = request.model_copy(update={"text": guarded.text})
+        if guarded.verdict is GuardVerdict.BLOCK:  # never reaches the router or any model
+            decision = IntentDecision(
+                intent=Intent.BLOCKED,
+                confidence=1.0,
+                reason=ReplyReason.BLOCKED,
+                method=RoutingMethod.INPUT_GUARD,
+            )
+        else:
+            decision = self.router.route(message)
+        logger.info(  # never the message text: it can contain personal data
+            "Routed message: intent=%s method=%s confidence=%.2f",
+            decision.intent,
+            decision.method,
+            decision.confidence,
+        )
+        response = self._respond(message, decision, on_event)
+        duration_ms = round((time.perf_counter() - started) * 1000)
+        return response.model_copy(update={"duration_ms": duration_ms})
+
+    def _respond(
+        self, request: AssistantRequest, decision: IntentDecision, on_event: EventHandler | None
+    ) -> AssistantResponse:
+        def reply(
+            kind: ResponseKind, template: templates.Reply, reason: ReplyReason
+        ) -> AssistantResponse:
+            return AssistantResponse(
+                request=request,
+                kind=kind,
+                routing=decision,
+                message=template.message,
+                examples=list(template.examples),
+                reason=reason,
+            )
+
+        available = HANDLED_INTENTS
+        if decision.confidence < self.settings.router_min_confidence:
+            question = templates.clarifying_question(
+                decision.intent, available, shift_pinned=request.shift_id is not None
+            )
+            return reply(ResponseKind.CLARIFICATION, question, ReplyReason.LOW_CONFIDENCE)
+        if decision.intent is Intent.HELP:
+            reason = decision.reason or ReplyReason.HELP_REQUEST
+            return reply(ResponseKind.HELP, templates.help_reply(reason, available), reason)
+        if decision.intent in (Intent.OUT_OF_SCOPE, Intent.BLOCKED):
+            if decision.intent is Intent.BLOCKED:
+                reason = ReplyReason.BLOCKED
+            else:
+                reason = decision.reason or ReplyReason.OFF_TOPIC
+            return reply(ResponseKind.REFUSAL, templates.refusal(reason, available), reason)
+        if decision.intent not in available:
+            unavailable = templates.not_available_yet(decision.intent, available)
+            return reply(ResponseKind.HELP, unavailable, ReplyReason.NOT_AVAILABLE_YET)
+
+        try:
+            staffing = request.staffing_request()
+        except ValidationError as exc:  # e.g. text that grew past the limit when normalized
+            error = templates.Reply(templates.input_error(exc))
+            return reply(ResponseKind.REFUSAL, error, ReplyReason.INVALID_REQUEST)
+        report = self.run(staffing, on_event)
+        return AssistantResponse(
+            request=request,
+            kind=ResponseKind.STAFFING_REPORT,
+            routing=decision,
+            message=report.clarification_question or report.summary,
+            report=report,
+        )
 
     def run(self, request: StaffingRequest, on_event: EventHandler | None = None) -> StaffingReport:
         started = time.perf_counter()
@@ -130,10 +238,12 @@ def build_assistant(
     *,
     embedder: Embedder | None = None,
     chat_model: ToolCallingModel | None = None,
+    router_model: StructuredModel | None = None,
     clock: Clock = time.monotonic,
     sleep: Sleep = time.sleep,
 ) -> ShiftFillAssistant:
-    """Composition root. Pass `chat_model`, `embedder`, `clock` or `sleep` to inject fakes."""
+    """Composition root. Pass `chat_model`, `router_model`, `embedder`, `clock` or `sleep` to
+    inject fakes."""
     settings = settings or Settings()
     repository = StaffingRepository.from_directory(settings.data_dir)
     embedder = embedder or create_embedder(settings.embedding_model, settings.cache_dir)
@@ -158,8 +268,16 @@ def build_assistant(
         clock=clock,
         sleep=sleep,
     )
+    router = IntentRouter(
+        repository, settings, router_model or build_router_model(settings, RouterOutput)
+    )
     return ShiftFillAssistant(
-        settings, repository, deps, toolkit, retrieval_degraded=not embedder.semantic
+        settings,
+        repository,
+        deps,
+        toolkit,
+        retrieval_degraded=not embedder.semantic,
+        router=router,
     )
 
 

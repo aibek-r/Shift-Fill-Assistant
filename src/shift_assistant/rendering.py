@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from shift_assistant.contracts import Origin, StaffingReport, TraceEvent
+from shift_assistant.contracts import AssistantResponse, Origin, StaffingReport, TraceEvent
 from shift_assistant.reliability.reporting import completion_summary
 from shift_assistant.tools.outreach import format_local_datetime, unit_label
 from shift_assistant.tools.schemas import ShiftSummary
@@ -28,6 +28,16 @@ def describe_shift(shift: ShiftSummary) -> str:
         f"{format_local_datetime(shift.end)} ({shift.timezone}), "
         f"{shift.positions_open} position(s) open"
     )
+
+
+def render_response(response: AssistantResponse) -> str:
+    """A staffing run renders its full report; every other reply is its template text."""
+    if response.report is not None:
+        return render_markdown(response.report)
+    lines = [response.message]
+    if response.examples:
+        lines += ["", "Try:", *(f"- {example}" for example in response.examples)]
+    return "\n".join(lines)
 
 
 def render_markdown(report: StaffingReport) -> str:

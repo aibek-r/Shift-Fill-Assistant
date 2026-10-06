@@ -125,14 +125,59 @@ def test_shift_and_mode_changes_clear_results_and_approvals(app: AppTest) -> Non
     assert "report" not in app.session_state and "review" not in app.session_state
 
 
-@pytest.mark.parametrize("invalid", ["", "x"])
-def test_invalid_submissions_clear_previous_results(app: AppTest, invalid: str) -> None:
+@pytest.mark.parametrize(
+    ("message", "reply"),
+    [
+        ("", "I'm the Shift Fill Assistant."),  # empty text gets the help reply
+        ("x", "Do you want me to find nurses for the shift you selected?"),  # SHF-1001 is pinned
+    ],
+)
+def test_short_messages_get_a_reply_and_clear_previous_results(
+    app: AppTest, message: str, reply: str
+) -> None:
     run_icu(app)
-    app.text_area(key="request_text").set_value(invalid)
+    app.text_area(key="request_text").set_value(message)
     click(app, "Run assistant")
     assert "report" not in app.session_state and "review" not in app.session_state
-    assert not app.json and not app.code
-    assert app.warning or app.error
+    assert not app.json and not app.code  # the earlier report is now a one-line summary
+    assert reply in app.chat_message[-1].markdown[0].value
+    assert any(c.value.startswith("Earlier result.") for c in app.caption)
+
+
+def test_too_long_message_shows_a_friendly_error(app: AppTest) -> None:
+    run_icu(app)
+    app.text_area(key="request_text").set_value("x" * 2001)
+    click(app, "Run assistant")
+    assert any("Your message is too long" in e.value for e in app.error)
+    assert "report" not in app.session_state and "review" not in app.session_state
+    assert len(app.session_state["messages"]) == 1  # no reply for an invalid message
+
+
+def test_chat_replies_to_greetings_and_off_topic_without_a_model(
+    app: AppTest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    model = ScriptedModel([])
+    monkeypatch.setattr(
+        "shift_assistant.assistant.build_chat_model", lambda *args: RunnableLambda(model)
+    )
+    st.cache_resource.clear()
+    app.text_area(key="request_text").set_value("hi")
+    click(app, "Run assistant")
+    assert app.chat_message[0].name == "user" and app.chat_message[1].name == "assistant"
+    assert app.chat_message[1].markdown[0].value.startswith("Hi! I'm the Shift Fill Assistant.")
+
+    click(app, "Off-topic question")
+    click(app, "Run assistant")
+    refusal = app.chat_message[-1].markdown[0].value
+    assert refusal.startswith("Sorry, I can't help with that.")
+    assert len(app.chat_message) == 4
+    assert model.received == []  # templates only: no model call
+
+    example = "Find two ICU nurses for the St. Mary's night shift on October 14."
+    click(app, example)  # the reply's example buttons fill in the message box
+    assert app.text_area(key="request_text").value == example
+    click(app, "New conversation")
+    assert not app.chat_message and "messages" not in app.session_state
 
 
 def test_facility_choice_preserves_dates_count_and_outreach_intent(

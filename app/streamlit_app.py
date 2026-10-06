@@ -9,18 +9,21 @@ from pathlib import Path
 from typing import Any
 
 import streamlit as st
+from pydantic import ValidationError
 
+from shift_assistant import templates
 from shift_assistant.agent.llm import unavailable_model
 from shift_assistant.assistant import ShiftFillAssistant, build_assistant
 from shift_assistant.config import Settings
 from shift_assistant.contracts import (
+    AssistantRequest,
+    AssistantResponse,
     CandidateRecommendation,
     IssueSeverity,
     Origin,
     ReportStatus,
     RunMode,
     StaffingReport,
-    StaffingRequest,
     TraceEvent,
 )
 from shift_assistant.domain.eligibility import (
@@ -65,6 +68,8 @@ EXAMPLES = {
     "Ambiguous request": "Can you find an ICU nurse for St. Mary's next week?",
     "Unknown facility": "Find a nurse for Mercy General tomorrow night.",
     "Nobody eligible": "We need a NICU nurse at Bayview Children's for the October 19 day shift.",
+    "What can you do?": "What can you do?",
+    "Off-topic question": "What's the weather like today?",
 }
 
 EXAMPLE_DETAILS = {
@@ -73,7 +78,10 @@ EXAMPLE_DETAILS = {
     "Ambiguous request": (":material/help:", "See how the assistant asks for details"),
     "Unknown facility": (":material/location_on:", "Choose from the available facilities"),
     "Nobody eligible": (":material/person_search:", "Review the reasons candidates were excluded"),
+    "What can you do?": (":material/waving_hand:", "See what the assistant can help with"),
+    "Off-topic question": (":material/block:", "See a polite refusal"),
 }
+MAX_MESSAGES = 20  # conversation turns kept on screen
 
 PROGRESS_LABELS = {
     "llm": "planning the next step",
@@ -186,8 +194,15 @@ def get_repository() -> StaffingRepository:
 
 @st.cache_resource(show_spinner="Building indexes...")
 def get_assistant(simulate_outage: bool) -> ShiftFillAssistant:
-    model = unavailable_model() if simulate_outage else None
-    return build_assistant(Settings(), embedder=get_embedder(), chat_model=model)
+    if not simulate_outage:
+        return build_assistant(Settings(), embedder=get_embedder())
+    # An outage takes down the router model too, so routing falls back to keywords.
+    return build_assistant(
+        Settings(),
+        embedder=get_embedder(),
+        chat_model=unavailable_model(),
+        router_model=unavailable_model(),
+    )
 
 
 def main() -> None:
@@ -209,22 +224,73 @@ def render_workspace(simulate_outage: bool, selected_shift: str | None) -> None:
             "Policy and profile search will be less accurate."
         )
 
+    conversation = st.container()  # above the form; filled after it, so new replies appear here
     request = render_request_form(selected_shift)
     if request is not None:
-        # Drop the previous result first so a failed run never leaves stale results on screen.
-        st.session_state.pop("report", None)
-        st.session_state.pop("review", None)
-        new_report = run_with_progress(assistant, request)
-        # A new run gets a new review, so no approval carries over from an earlier result.
-        st.session_state["report"] = new_report
-        st.session_state["review"] = OutreachReview.for_report(new_report)
+        with conversation:
+            response = run_with_progress(assistant, request)
+        record_response(response)
+    with conversation:
+        render_conversation(assistant)
 
-    report: StaffingReport | None = st.session_state.get("report")
-    if report is not None:
-        review: OutreachReview = st.session_state["review"]
-        render_report(report, review, assistant)
-    else:
+
+def record_response(response: AssistantResponse) -> None:
+    history: list[AssistantResponse] = st.session_state.setdefault("messages", [])
+    history.append(response)
+    del history[:-MAX_MESSAGES]
+    if response.report is not None:
+        # Only the newest staffing report is interactive. A new run gets a new review, so no
+        # approval carries over from an earlier result.
+        st.session_state["report"] = response.report
+        st.session_state["review"] = OutreachReview.for_report(response.report)
+
+
+def render_conversation(assistant: ShiftFillAssistant) -> None:
+    history: list[AssistantResponse] = st.session_state.get("messages", [])
+    if not history:
         render_empty_state()
+        return
+    for index, response in enumerate(history):
+        with st.chat_message("user"):
+            st.markdown(escape_markdown(response.request.text) or ":gray[(empty message)]")
+        with st.chat_message("assistant"):
+            render_response(response, assistant, latest=index == len(history) - 1)
+
+
+def render_response(
+    response: AssistantResponse, assistant: ShiftFillAssistant, *, latest: bool
+) -> None:
+    """Template replies show their text and examples; staffing runs show the report."""
+    report = response.report
+    if report is not None:
+        interactive = report is st.session_state.get("report")
+        if interactive:
+            render_report(report, st.session_state["review"], assistant)
+        else:
+            render_earlier_report(report)
+        return
+    st.markdown(response.message)  # fixed template text, never user or model text
+    if not response.examples:
+        return
+    st.caption("Try one of these:")
+    if not latest:
+        st.markdown("\n".join(f"- {escape_markdown(example)}" for example in response.examples))
+        return
+    for number, example in enumerate(response.examples):
+        st.button(
+            example,
+            key=f"try-{number}",
+            icon=":material/arrow_outward:",
+            on_click=use_example,
+            args=(example,),
+        )
+
+
+def render_earlier_report(report: StaffingReport) -> None:
+    _, icon, label = STATUS_STYLE[report.status]
+    text = report.clarification_question or report.summary
+    st.markdown(f"{icon} **{label}.** {escape_markdown(text)}")
+    st.caption("Earlier result. Only the latest result shows candidates, drafts and approvals.")
 
 
 def clear_result() -> None:
@@ -232,11 +298,22 @@ def clear_result() -> None:
     st.session_state.pop("review", None)
 
 
+def new_conversation() -> None:
+    st.session_state.pop("messages", None)
+    clear_result()
+
+
 def render_sidebar() -> tuple[bool, str | None]:
     with st.sidebar:
         st.caption("Staffing operations")
         if not Settings().llm_enabled:
             st.warning("AI is unavailable. Shortlists will use the recorded eligibility rules.")
+        st.button(
+            "New conversation",
+            icon=":material/add_comment:",
+            width="stretch",
+            on_click=new_conversation,
+        )
 
         st.subheader("Select a shift", icon=":material/calendar_month:")
         st.caption("Optional. Pin a shift or let the assistant find it.")
@@ -299,13 +376,16 @@ def render_about() -> None:
         )
 
 
-def render_request_form(selected_shift: str | None) -> StaffingRequest | None:
+def render_request_form(selected_shift: str | None) -> AssistantRequest | None:
     # Inside a form, Ctrl/Cmd+Enter in the text area submits the request.
     with st.form("request_form", border=True):
-        st.subheader("What shift do you need to fill?", icon=":material/edit_note:")
-        st.caption("Include the facility, unit, date and number of clinicians you need.")
+        st.subheader("What do you need?", icon=":material/edit_note:")
+        st.caption(
+            "To fill a shift, include the facility, unit, date and number of clinicians. "
+            'Type "help" to see what I can do.'
+        )
         text = st.text_area(
-            "Staffing request",
+            "Your message",
             key="request_text",
             height=110,
             placeholder="e.g. Find two ICU nurses for the St. Mary's night shift on October 14.",
@@ -317,14 +397,12 @@ def render_request_form(selected_shift: str | None) -> StaffingRequest | None:
             st.caption("or press **Ctrl+Enter** (**⌘+Enter** on Mac)")
     if not submitted:
         return None
+    # Drop the previous result first so a failed run never leaves stale results on screen.
     clear_result()
-    if not text.strip():
-        st.warning("Enter a staffing request first.")
-        return None
     try:
-        return StaffingRequest(text=text, shift_id=selected_shift)
-    except ValueError as exc:
-        st.error(f"Invalid request: {exc}")
+        return AssistantRequest(text=text, shift_id=selected_shift)
+    except ValidationError as exc:
+        st.error(templates.input_error(exc), icon=":material/error:")
         return None
 
 
@@ -348,17 +426,19 @@ def render_empty_state() -> None:
             )
 
 
-def run_with_progress(assistant: ShiftFillAssistant, request: StaffingRequest) -> StaffingReport:
-    """Show one friendly progress line while running, then clear it for the status banner."""
+def run_with_progress(
+    assistant: ShiftFillAssistant, request: AssistantRequest
+) -> AssistantResponse:
+    """Show one friendly progress line while running, then clear it for the reply."""
     placeholder = st.empty()
-    with placeholder.status("Agent working...", expanded=False) as status:
+    with placeholder.status("Reading your message...", expanded=False) as status:
 
         def show(event: TraceEvent) -> None:
             status.update(label=f"Agent working: {progress_label(event)}...")
 
-        report = assistant.run(request, on_event=show)
+        response = assistant.ask(request, on_event=show)
     placeholder.empty()
-    return report
+    return response
 
 
 def progress_label(event: TraceEvent) -> str:

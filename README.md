@@ -14,6 +14,11 @@ draft outreach"*, and the assistant:
 6. Verifies the answer against the evidence the tools returned, finishes any mandatory work the
    model skipped with deterministic rules, and labels what code added.
 
+Every message first passes an input guard and an intent router. Greetings and "help" get a fixed
+help reply, off-topic messages and medical or legal questions get a polite refusal, unclear
+messages get one clarifying question, and only staffing requests run the workflow above. See
+[the front door](#front-door-guard-router-and-fixed-replies).
+
 > Senior AI Engineer take-home for Florence Healthcare, by
 > [Aibek Rysbek](https://github.com/aibek-r).
 > Stack: Python 3.11+ (tested on 3.13), LangGraph, OpenAI (`gpt-5.4-mini`), fastembed, Pydantic,
@@ -29,6 +34,7 @@ cp .env.example .env              # then set OPENAI_API_KEY
 
 streamlit run app/streamlit_app.py                     # web UI
 shift-assistant "Find two ICU nurses for the St. Mary's night shift on Oct 14"   # CLI
+shift-assistant "help"                                 # what the assistant can do
 pytest                                                 # offline tests, no API key needed
 python -m evals.run                                    # offline evaluation harness
 ```
@@ -42,13 +48,46 @@ The first run downloads a small local embedding model (about 70 MB) into `.cache
 fails, search falls back to keyword matching, and the UI and CLI say so. `.env.example` pins
 `REFERENCE_DATE` so relative dates match the October 2026 mock shifts. Start Streamlit from this
 directory so it loads the theme in `.streamlit/config.toml`. The CLI also accepts `--shift`,
-`--facility`, `--unit` and `--date`, which override the request text.
+`--facility`, `--unit` and `--date`, which override the request text; `--json` prints the full
+`AssistantResponse`, with the `StaffingReport` under `report` for staffing requests.
 
 Docker is optional and **was not verified** in the latest environment (the Docker daemon was
 not running):
 `docker build -t shift-fill-assistant . && docker run -p 8501:8501 --env-file .env shift-fill-assistant`
 
 ## Architecture
+
+### Front door: guard, router and fixed replies
+
+```mermaid
+flowchart LR
+    M[Message] --> G[Input guard<br/>normalize text]
+    G --> RT{Intent router<br/>fast rules, router model,<br/>keyword fallback}
+    RT -->|help| H[Help template]
+    RT -->|out_of_scope, blocked| X[Refusal template]
+    RT -->|confidence below 0.7| Q[One clarifying question]
+    RT -->|fill_shift| W[Staffing workflow below]
+    RT -->|other questions| N[Not available yet]
+```
+
+`ShiftFillAssistant.ask(AssistantRequest) -> AssistantResponse` is the entry point for the UI and
+CLI. The response has a `kind` (`staffing_report`, `answer`, `clarification`, `refusal` or
+`help`); a staffing run keeps its full `StaffingReport` under `report`, and
+`ShiftFillAssistant.run(StaffingRequest)` still returns that report directly.
+
+- **Fast rules** answer empty text, greetings, thanks and "help" / "what can you do" with no AI.
+- **The router model** (`ROUTER_MODEL`, one structured-output call, no tools) returns an intent,
+  a confidence and entities. Its output is validated, and entities that are not in the message
+  are dropped. The staffing workflow still parses the original text, so a routing error cannot
+  change which shift is staffed.
+- **Keyword rules** stand in without an API key or when the router model fails. Messages that
+  fit several intents, or none, get a low confidence and therefore a question.
+- **Replies other than staffing reports are fixed templates** (`templates.py`); the model never
+  writes a refusal, help text or question here.
+- Credential, eligibility, shift and policy questions are recognized but answered with "not
+  available yet" for now; they are never forced into the staffing workflow.
+
+### Staffing workflow
 
 ```mermaid
 flowchart LR
@@ -71,13 +110,14 @@ flowchart LR
 
 | Layer | Module | Responsibility |
 | --- | --- | --- |
+| Front door | `guards/`, `router.py`, `templates.py` | Input normalization, intent routing, fixed help, refusal and clarification text |
 | Domain | `domain/` | Typed entities, structured shift preferences, and the **deterministic eligibility engine** |
 | Data | `repository.py` | Loads and validates the JSON "system of record", including referential integrity |
 | Retrieval | `retrieval/` | fastembed embeddings, a cosine vector index with metadata pre-filtering, policy chunking |
 | Tools | `tools/` | Five tools with Pydantic argument schemas, plus a registry that never raises |
 | Agent | `agent/` | LangGraph state machine, prompts, the structured submission, model budget and retries |
 | Reliability | `reliability/` | Grounding checks, deterministic completion, verifier, status rules, fallback shift resolution, rule-based fallback |
-| Interfaces | `app/streamlit_app.py`, `cli.py` | Streamlit UI with live progress, review and a trace; CLI printing Markdown or JSON |
+| Interfaces | `app/streamlit_app.py`, `cli.py` | Streamlit chat view with live progress, review and a trace; CLI printing Markdown or JSON |
 | Evaluation | `evals/` | Offline evaluation harness (`python -m evals.run`) |
 
 ## How the assignment requirements are met
@@ -156,7 +196,7 @@ harness cover them. [docs/DEMO.md](docs/DEMO.md) is a five-minute demo guide.
 ## Testing and evaluation
 
 ```bash
-pytest                                               # 276 offline tests
+pytest                                               # 395 offline tests
 python -m evals.run                                  # 10 cases x (scripted agent, fallback)
 ruff check src app scripts tests evals
 ruff format --check src app scripts tests evals
@@ -179,6 +219,9 @@ All settings live in `config.py` and can be overridden through environment varia
 | `OPENAI_API_KEY` | none | Enables the agent. Without it, the fallback mode runs. |
 | `OPENAI_MODEL` | `gpt-5.4-mini` | Any tool-calling OpenAI model |
 | `OPENAI_REASONING_EFFORT` | `low` | Set `none` for non-reasoning models such as `gpt-4.1-mini` |
+| `ROUTER_MODEL` / `ROUTER_REASONING_EFFORT` | `OPENAI_MODEL` / `low` | Model for intent routing (one structured-output call per message) |
+| `ROUTER_TIMEOUT_SECONDS` | `10` | One attempt; on failure the keyword router answers |
+| `ROUTER_MIN_CONFIDENCE` | `0.7` | Below this, the assistant asks one clarifying question |
 | `MAX_AGENT_STEPS` / `MAX_REPAIR_ATTEMPTS` | `12` / `2` | Loop budgets |
 | `MAX_RUN_SECONDS` | `180` | Model execution budget: one deadline for every model call, retry and backoff (not a total-workflow deadline) |
 | `LLM_TIMEOUT_SECONDS` / `LLM_MAX_RETRIES` | `60` / `3` | Per-call timeout (shortened to the budget left) and retries for transient errors; SDK retries are disabled |
@@ -204,6 +247,11 @@ fields transcribed from each profile.
   real retrieval quality.
 - Text parsing for counts, outreach intent, facility, unit and dates handles common phrasing
   only; typed request fields cover the rest.
+- The router model has not been run live yet; offline tests use a fake. The keyword fallback
+  router is deliberately narrow and asks when unsure. Prompt-injection, personal-data and
+  rate-limit checks in the input guard are not built yet.
+- Only staffing requests have a handler; credential, eligibility, shift and policy questions are
+  recognized and answered with "not available yet". There is no conversation memory.
 - The model budget cannot interrupt a call in flight, so it is not a strict wall-clock limit.
 - Mock data only; no authentication, persistent audit trail, PII redaction of free-text
   profiles, or real message delivery. Docker was not verified here.

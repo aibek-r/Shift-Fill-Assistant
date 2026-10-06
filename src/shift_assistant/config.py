@@ -39,6 +39,18 @@ class Settings(BaseSettings):
         "SDK retries are disabled.",
     )
 
+    # Intent router: a small structured-output call that runs before any workflow
+    router_model: str | None = Field(
+        default=None, description="Model for intent routing; defaults to OPENAI_MODEL."
+    )
+    router_reasoning_effort: Literal["low", "medium", "high"] | None = "low"
+    router_timeout_seconds: float = Field(
+        default=10.0, gt=0, description="One attempt; on failure the keyword router answers."
+    )
+    router_min_confidence: float = Field(
+        default=0.7, ge=0, le=1, description="Below this, ask a clarifying question."
+    )
+
     # Agent budgets and guardrails
     max_agent_steps: int = Field(default=12, ge=1, description="Max LLM calls per request.")
     max_run_seconds: float = Field(

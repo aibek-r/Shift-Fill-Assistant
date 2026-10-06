@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -13,11 +13,13 @@ from shift_assistant.domain.models import Unit
 from shift_assistant.intent import requested_count, wants_outreach
 from shift_assistant.tools.schemas import OutreachDraft, PolicyExcerpt, ShiftSummary
 
+MAX_MESSAGE_CHARS = 2000
+
 
 class StaffingRequest(BaseModel):
     model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
 
-    text: str = Field(min_length=5, max_length=2000)
+    text: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
     shift_id: str | None = Field(
         default=None, description="Optional shift the coordinator pinned in the UI."
     )
@@ -209,3 +211,130 @@ class StaffingReport(BaseModel):
     trace: list[TraceEvent] = []
     metrics: RunMetrics = RunMetrics()
     outreach_review: OutreachReviewSnapshot | None = None
+
+
+# --- Front door: one coordinator message, routed to a handler --------------------------------
+
+
+class AssistantRequest(BaseModel):
+    """One coordinator message. Empty text is valid: it gets the help reply.
+
+    The typed shift fields are used only when the message is routed to the staffing workflow.
+    """
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    text: str = Field(default="", max_length=MAX_MESSAGE_CHARS)
+    shift_id: str | None = Field(
+        default=None, description="Optional shift the coordinator pinned in the UI."
+    )
+    facility: str | None = Field(default=None, max_length=200, description="Facility name or ID.")
+    unit: Unit | None = None
+    start_date: date | None = Field(default=None, description="Facility-local shift start date.")
+
+    def staffing_request(self) -> StaffingRequest:
+        return StaffingRequest(
+            text=self.text,
+            shift_id=self.shift_id,
+            facility=self.facility,
+            unit=self.unit,
+            start_date=self.start_date,
+        )
+
+
+class Intent(StrEnum):
+    FILL_SHIFT = "fill_shift"
+    CREDENTIAL_CHECK = "credential_check"
+    ELIGIBILITY_CHECK = "eligibility_check"
+    SHIFT_LOOKUP = "shift_lookup"
+    POLICY_QUESTION = "policy_question"
+    HELP = "help"
+    OUT_OF_SCOPE = "out_of_scope"
+    BLOCKED = "blocked"
+
+
+class RoutingMethod(StrEnum):
+    INPUT_GUARD = "input_guard"  # blocked before routing; goes straight to the refusal template
+    FAST_RULE = "fast_rule"  # fixed patterns for empty text, greetings and help; no AI
+    LLM = "llm"  # structured output from the router model
+    KEYWORDS = "keywords"  # keyword fallback: no API key, or the router model failed
+
+
+class ReplyReason(StrEnum):
+    """Why the assistant answered with a fixed reply instead of running a workflow."""
+
+    EMPTY_MESSAGE = "empty_message"
+    GREETING = "greeting"
+    THANKS = "thanks"
+    HELP_REQUEST = "help_request"
+    OFF_TOPIC = "off_topic"
+    CLINICAL_ADVICE = "clinical_advice"
+    LEGAL_ADVICE = "legal_advice"
+    BLOCKED = "blocked"
+    LOW_CONFIDENCE = "low_confidence"
+    NOT_AVAILABLE_YET = "not_available_yet"
+    INVALID_REQUEST = "invalid_request"
+
+
+class IntentEntities(BaseModel):
+    """Details the router read from the message. Hints only: handlers re-check each one
+    against the system of record, and the staffing workflow parses the original text."""
+
+    model_config = ConfigDict(frozen=True)
+
+    facility: str | None = None
+    unit: Unit | None = None
+    shift_date: date | None = None
+    clinician_name: str | None = None
+    shift_id: str | None = None
+
+
+class IntentDecision(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    intent: Intent
+    confidence: float = Field(ge=0, le=1)
+    entities: IntentEntities = Field(default_factory=IntentEntities)
+    reason: ReplyReason | None = Field(
+        default=None, description="Finer reason for help, out_of_scope and blocked intents."
+    )
+    method: RoutingMethod
+    fallback_reason: str | None = Field(
+        default=None, description="Why the keyword router stood in for the router model."
+    )
+
+
+class ResponseKind(StrEnum):
+    STAFFING_REPORT = "staffing_report"
+    ANSWER = "answer"
+    CLARIFICATION = "clarification"
+    REFUSAL = "refusal"
+    HELP = "help"
+
+
+class AssistantResponse(BaseModel):
+    """What the coordinator gets back for one message. A staffing run keeps its full
+    `StaffingReport`; every other reply is a fixed template, never model prose."""
+
+    request: AssistantRequest
+    kind: ResponseKind
+    routing: IntentDecision
+    message: str = Field(
+        description="Text for the coordinator: a fixed template, or the code-built report summary."
+    )
+    examples: list[str] = Field(default=[], description="Example requests the coordinator can try.")
+    reason: ReplyReason | None = None
+    report: StaffingReport | None = Field(
+        default=None, description="Set for staffing_report responses, and only for them."
+    )
+    duration_ms: int = 0
+
+    @model_validator(mode="after")
+    def _report_matches_kind(self) -> Self:
+        if (self.kind is ResponseKind.STAFFING_REPORT) != (self.report is not None):
+            raise ValueError("a report is required for staffing_report responses, and only there")
+        return self
+
+    @property
+    def intent(self) -> Intent:
+        return self.routing.intent
