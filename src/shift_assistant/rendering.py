@@ -5,7 +5,7 @@ from __future__ import annotations
 from shift_assistant.contracts import AssistantResponse, Origin, StaffingReport, TraceEvent
 from shift_assistant.reliability.reporting import completion_summary
 from shift_assistant.tools.outreach import format_local_datetime, unit_label
-from shift_assistant.tools.schemas import ShiftSummary
+from shift_assistant.tools.schemas import PolicyExcerpt, ShiftSummary
 
 SELECTED_BY = {Origin.MODEL: "AI agent", Origin.CODE: "deterministic rules"}
 DRAFTED_BY = {
@@ -31,13 +31,36 @@ def describe_shift(shift: ShiftSummary) -> str:
 
 
 def render_response(response: AssistantResponse) -> str:
-    """A staffing run renders its full report; every other reply is its template text."""
+    """Declined parts first, then the full staffing report, or the reply with its answer."""
+    lines = [f"Note: {part.message}" for part in response.refused_parts]
+    if lines:
+        lines.append("")
     if response.report is not None:
-        return render_markdown(response.report)
-    lines = [response.message]
+        return "\n".join([*lines, render_markdown(response.report)])
+    lines.append(response.message)
+    if (answer := response.answer) is not None:
+        lines += [f"- {item}" for item in answer.items]
+        if answer.table is not None:
+            lines += ["", *_markdown_table(answer.table.columns, answer.table.rows)]
+        for citation in answer.citations:
+            quoted = [f"> {line}" for line in citation_body(citation).splitlines()]
+            lines += ["", *quoted, f"Source: {citation.chunk_id}"]
     if response.examples:
         lines += ["", "Try:", *(f"- {example}" for example in response.examples)]
     return "\n".join(lines)
+
+
+def citation_body(excerpt: PolicyExcerpt) -> str:
+    """The section text without its heading, which the reply already names."""
+    first, _, rest = excerpt.text.partition("\n")
+    return rest.strip() if first.strip() == excerpt.section and rest.strip() else excerpt.text
+
+
+def _markdown_table(columns: list[str], rows: list[list[str]]) -> list[str]:
+    def cells(values: list[str]) -> str:
+        return "| " + " | ".join(v.replace("|", "\\|") for v in values) + " |"
+
+    return [cells(columns), cells(["---"] * len(columns)), *(cells(row) for row in rows)]
 
 
 def render_markdown(report: StaffingReport) -> str:

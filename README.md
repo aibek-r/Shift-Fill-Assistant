@@ -14,9 +14,12 @@ draft outreach"*, and the assistant:
 6. Verifies the answer against the evidence the tools returned, finishes any mandatory work the
    model skipped with deterministic rules, and labels what code added.
 
-Every message first passes an input guard and an intent router. Greetings and "help" get a fixed
-help reply, off-topic messages and medical or legal questions get a polite refusal, unclear
-messages get one clarifying question, and only staffing requests run the workflow above. See
+Every message first passes an input guard and an intent router. Staffing requests run the
+workflow above. Questions about open shifts, facility facts and facility policies get read-only
+answers built by code from the records, with policy citations. Greetings and "help" get a fixed
+help reply; off-topic messages, medical or legal questions, requests to book or send anything,
+business-sensitive data and prompt attacks get a fixed refusal; unclear messages get one
+question. See
 [the front door](#front-door-guard-router-and-fixed-replies).
 
 > Senior AI Engineer take-home for Florence Healthcare, by
@@ -63,11 +66,11 @@ not running):
 flowchart LR
     M[Message] --> G[Input guard<br/>normalize text]
     G --> RT{Intent router<br/>fast rules, router model,<br/>keyword fallback}
-    RT -->|help| H[Help template]
-    RT -->|out_of_scope, blocked| X[Refusal template]
+    RT -->|help, small_talk| H[Help template]
+    RT -->|out_of_scope, medical_legal,<br/>action_not_allowed,<br/>business_sensitive, blocked| X[Refusal template]
     RT -->|confidence below 0.7| Q[One clarifying question]
+    RT -->|shift_lookup, facility_info,<br/>policy_question| A[Read-only answer<br/>from records, with sources]
     RT -->|fill_shift| W[Staffing workflow below]
-    RT -->|other questions| N[Not available yet]
 ```
 
 `ShiftFillAssistant.ask(AssistantRequest) -> AssistantResponse` is the entry point for the UI and
@@ -82,10 +85,13 @@ CLI. The response has a `kind` (`staffing_report`, `answer`, `clarification`, `r
   change which shift is staffed.
 - **Keyword rules** stand in without an API key or when the router model fails. Messages that
   fit several intents, or none, get a low confidence and therefore a question.
-- **Replies other than staffing reports are fixed templates** (`templates.py`); the model never
-  writes a refusal, help text or question here.
-- Credential, eligibility, shift and policy questions are recognized but answered with "not
-  available yet" for now; they are never forced into the staffing workflow.
+- **No model prose is shown.** Answers are tables and sentences built by code from records
+  (`handlers/`), policy sections quoted as is with their citation, or fixed templates
+  (`templates.py`). A policy question with no matching section gets "I couldn't find this".
+- **Mixed messages** keep one main intent and decline the rest in one line, e.g. a staffing
+  request that also asks about the weather.
+- Credential-expiry and single-nurse eligibility questions are recognized and answered with
+  "not available yet" for now; they are never forced into the staffing workflow.
 
 ### Staffing workflow
 
@@ -196,7 +202,7 @@ harness cover them. [docs/DEMO.md](docs/DEMO.md) is a five-minute demo guide.
 ## Testing and evaluation
 
 ```bash
-pytest                                               # 401 offline tests
+pytest                                               # 475 offline tests
 python -m evals.run                                  # 10 cases x (scripted agent, fallback)
 ruff check src app scripts tests evals
 ruff format --check src app scripts tests evals
@@ -250,8 +256,10 @@ fields transcribed from each profile.
 - The router model has not been run live yet; offline tests use a fake. The keyword fallback
   router is deliberately narrow and asks when unsure. Prompt-injection, personal-data and
   rate-limit checks in the input guard are not built yet.
-- Only staffing requests have a handler; credential, eligibility, shift and policy questions are
-  recognized and answered with "not available yet". There is no conversation memory.
+- Credential-expiry and single-nurse eligibility questions are recognized but not answered
+  yet. There is no conversation memory, so a follow-up such as "and for October 16?" gets a
+  question. Policy answers need a word in common with a section heading or text, so a
+  paraphrase with no shared word gets "I couldn't find this".
 - The model budget cannot interrupt a call in flight, so it is not a strict wall-clock limit.
 - Mock data only; no authentication, persistent audit trail, PII redaction of free-text
   profiles, or real message delivery. Docker was not verified here.

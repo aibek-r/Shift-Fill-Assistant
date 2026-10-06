@@ -16,6 +16,7 @@ from shift_assistant.agent.llm import unavailable_model
 from shift_assistant.assistant import ShiftFillAssistant, build_assistant
 from shift_assistant.config import Settings
 from shift_assistant.contracts import (
+    Answer,
     AssistantRequest,
     AssistantResponse,
     CandidateRecommendation,
@@ -34,6 +35,7 @@ from shift_assistant.domain.eligibility import (
 )
 from shift_assistant.domain.models import COMPACT_JURISDICTION, CredentialType
 from shift_assistant.reliability.reporting import completion_summary, plural, shortlist_phrase
+from shift_assistant.rendering import citation_body
 from shift_assistant.repository import StaffingRepository
 from shift_assistant.retrieval.embedder import Embedder, create_embedder
 from shift_assistant.retrieval.knowledge import GLOBAL_SCOPE
@@ -250,14 +252,22 @@ def render_answer(assistant: ShiftFillAssistant) -> None:
 
 
 def render_response(response: AssistantResponse, assistant: ShiftFillAssistant) -> None:
-    """Template replies show their text and examples; staffing runs show the report."""
+    """Declined parts first, then the report or the answer, then example requests.
+
+    All text is escaped and rendered without HTML: answers can repeat words from the message
+    (an unknown facility name) or quote policy text, and neither may run as markup.
+    """
+    for part in response.refused_parts:
+        st.info(escape_markdown(part.message), icon=":material/block:")
     if response.report is not None:
         render_report(response.report, st.session_state["review"], assistant)
         return
-    st.markdown(response.message)  # fixed template text, never user or model text
+    st.markdown(escape_markdown(response.message))
+    if response.answer is not None:
+        render_answer_details(response.answer)
     if not response.examples:
         return
-    st.caption("Try one of these:")
+    st.caption("Try:")
     for number, example in enumerate(response.examples):
         st.button(
             example,
@@ -266,6 +276,19 @@ def render_response(response: AssistantResponse, assistant: ShiftFillAssistant) 
             on_click=use_example,
             args=(example,),
         )
+
+
+def render_answer_details(answer: Answer) -> None:
+    """Facts, a table and quoted policy sections, all built by code from records."""
+    if answer.items:
+        st.markdown("\n".join(f"- {escape_markdown(item)}" for item in answer.items))
+    if answer.table is not None:
+        rows = [dict(zip(answer.table.columns, row, strict=True)) for row in answer.table.rows]
+        st.dataframe(rows, hide_index=True)
+    for citation in answer.citations:
+        with st.container(border=True):
+            st.markdown(escape_markdown(citation_body(citation)))
+            st.caption(f"Source: {source_title(citation)} ({citation.chunk_id})")
 
 
 def clear_result() -> None:

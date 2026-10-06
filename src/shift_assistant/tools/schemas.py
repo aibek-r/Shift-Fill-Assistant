@@ -11,7 +11,7 @@ from datetime import date, datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 from shift_assistant.domain.eligibility import CredentialCheck, Finding
-from shift_assistant.domain.models import Facility, Role, Shift, ShiftPeriod, Unit
+from shift_assistant.domain.models import CredentialType, Facility, Role, Shift, ShiftPeriod, Unit
 from shift_assistant.tools.facts import PeriodFit
 
 
@@ -192,3 +192,51 @@ class OutreachDraft(_Result):
     personal_note: str
     subject: str
     body: str
+
+
+# --- get_facility_info (read-only questions; not offered to the staffing agent) ---------------
+
+
+class GetFacilityInfoArgs(_Args):
+    facility: str = Field(
+        min_length=1, max_length=200, description='Facility name or ID, e.g. "Bayview".'
+    )
+
+
+class UnitRequirementInfo(_Result):
+    unit: Unit
+    required_credentials: list[CredentialType]
+    min_years_experience: int
+
+
+class FacilityInfo(_Result):
+    """Facility facts from facilities.json. Contract and pay terms are not part of the record."""
+
+    facility_id: str
+    name: str
+    city: str
+    state: str
+    timezone: str
+    accepts_compact_license: bool
+    min_rest_hours: int
+    units: list[UnitRequirementInfo]
+
+    @classmethod
+    def of(cls, facility: Facility) -> FacilityInfo:
+        return cls(
+            facility_id=facility.id,
+            name=facility.name,
+            city=facility.city,
+            state=facility.state,
+            timezone=facility.timezone,
+            accepts_compact_license=facility.accepts_compact_license,
+            min_rest_hours=facility.min_rest_hours,
+            units=[
+                UnitRequirementInfo(
+                    unit=unit,
+                    required_credentials=list(requirement.required_credentials),
+                    min_years_experience=requirement.min_years_experience,
+                )
+                for unit, requirement in facility.units.items()
+            ],
+        )

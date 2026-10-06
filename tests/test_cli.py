@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from shift_assistant import templates
 from shift_assistant.cli import main
 from shift_assistant.retrieval.embedder import HashingEmbedder
 
@@ -26,15 +27,15 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_greeting_prints_the_help_template(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["hi"]) == 0
     out = capsys.readouterr()
-    assert out.out.startswith("Hi! I'm the Shift Fill Assistant.")
+    assert out.out.startswith(templates.HELP)
     assert f"Try:\n- {ICU_REQUEST}" in out.out
     assert "keyword routing" in out.err
 
 
-def test_off_topic_json_is_a_refusal_without_a_report(capsys: pytest.CaptureFixture[str]) -> None:
+def test_off_topic_json_has_no_report(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["What is the weather today?", "--json"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["kind"] == "refusal" and payload["reason"] == "off_topic"
+    assert payload["kind"] == "out_of_scope" and payload["reason"] == "off_topic"
     assert payload["report"] is None and payload["routing"]["method"] == "keywords"
 
 
@@ -54,6 +55,7 @@ def test_staffing_request_prints_and_saves_the_report(
     ("args", "message"),
     [
         (["x" * 2001], "Your message is too long. Please keep it under 2,000 characters."),
+        (["x" * 10_000], "Your message is too long. Please keep it under 2,000 characters."),
         (["Find two nurses", "--date", "soon"], "The date must look like 2026-10-14."),
     ],
 )
@@ -65,3 +67,28 @@ def test_invalid_input_gets_a_friendly_error(
     assert exited.value.code == 2
     err = capsys.readouterr().err
     assert message in err and "validation error" not in err
+
+
+def test_policy_answer_quotes_the_section_with_its_source(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["Where do agency nurses park at St. Mary's?"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("From the St. Mary's Medical Center policies (Parking and arrival):")
+    assert "> Agency clinicians park in Garage C on 38th Street." in out
+    assert "Source: FAC-001#parking-and-arrival" in out
+
+
+def test_shift_answer_prints_a_table(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["Any open night shifts at St. Mary's?"]) == 0
+    out = capsys.readouterr().out
+    assert "| Shift | Facility | Unit | Date | Time | Day/night | Open places |" in out
+    assert "| SHF-1001 | St. Mary's Medical Center | ICU | Wed, Oct 14 |" in out
+
+
+def test_declined_parts_are_printed_before_the_report(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["Find ICU nurses for Oct 14 and what's the weather?"]) == 0
+    out = capsys.readouterr().out
+    assert out.startswith("Note: I can't help with the weather.\n\n# Staffing report")

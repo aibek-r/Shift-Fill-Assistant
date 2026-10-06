@@ -1,7 +1,8 @@
 """Public entry point: wires the components together and answers a request end to end.
 
 `ask` is the front door for any coordinator message: input guard, intent router, then one
-handler (a fixed template or the staffing workflow). `run` is the staffing workflow itself.
+handler (a fixed template, a read-only answer, or the staffing workflow). `run` is the staffing
+workflow itself.
 """
 
 from __future__ import annotations
@@ -31,8 +32,11 @@ from shift_assistant.contracts import (
     AssistantResponse,
     Intent,
     IntentDecision,
+    IntentEntities,
     IssueSeverity,
+    RefusedPart,
     ReplyReason,
+    ReportStatus,
     ResponseKind,
     RoutingMethod,
     RunMetrics,
@@ -43,6 +47,11 @@ from shift_assistant.contracts import (
 )
 from shift_assistant.domain.eligibility import EligibilityEngine
 from shift_assistant.guards.input_guard import GuardVerdict, InputGuard
+from shift_assistant.handlers.common import HandlerReply
+from shift_assistant.handlers.facilities import FacilityQuestions
+from shift_assistant.handlers.policies import PolicyQuestions
+from shift_assistant.handlers.replies import fixed_reply
+from shift_assistant.handlers.shifts import ShiftQuestions
 from shift_assistant.reliability.completion import DeterministicCompletion
 from shift_assistant.reliability.fallback import DeterministicFallback
 from shift_assistant.repository import StaffingRepository
@@ -58,8 +67,14 @@ logger = logging.getLogger(__name__)
 
 EventHandler = Callable[[TraceEvent], None]
 
-# Intents with a working handler. Other in-scope intents get a "not available yet" reply.
-HANDLED_INTENTS: tuple[Intent, ...] = (Intent.FILL_SHIFT,)
+# Intents answered from the system of record. Credential and single-nurse eligibility questions
+# are recognized but get a "not available yet" reply; everything else gets a fixed template.
+HANDLED_INTENTS: tuple[Intent, ...] = (
+    Intent.FILL_SHIFT,
+    Intent.SHIFT_LOOKUP,
+    Intent.POLICY_QUESTION,
+    Intent.FACILITY_INFO,
+)
 
 
 class ShiftFillAssistant:
@@ -80,6 +95,14 @@ class ShiftFillAssistant:
         self.retrieval_degraded = retrieval_degraded
         self.llm_enabled = deps.model is not None
         self._guard = InputGuard()
+        shifts = ShiftQuestions(repository, toolkit, lambda: settings.today)
+        facilities = FacilityQuestions(repository, toolkit)
+        policies = PolicyQuestions(repository, toolkit)
+        self._handlers: dict[Intent, Callable[[str, IntentEntities], HandlerReply]] = {
+            Intent.SHIFT_LOOKUP: shifts.answer,
+            Intent.FACILITY_INFO: facilities.answer,
+            Intent.POLICY_QUESTION: policies.answer,
+        }
         self._clock = deps.clock
         self._graph = build_agent_graph(deps)
         # Each LLM call costs two graph steps (agent, then tools or validate); the run ends with
@@ -91,8 +114,9 @@ class ShiftFillAssistant:
     ) -> AssistantResponse:
         """Answer one coordinator message: input guard, intent router, then one handler.
 
-        Only staffing requests reach the agent workflow. Every other reply is a fixed template,
-        so the model never answers, refuses or asks a question in its own words here.
+        Only staffing requests reach the agent workflow. Shift, facility and policy questions are
+        answered by code from read-only tools; every other reply is a fixed template. The model
+        never answers, refuses or asks a question in its own words here.
         """
         started = time.perf_counter()
         guarded = self._guard.check(request.text)
@@ -119,48 +143,58 @@ class ShiftFillAssistant:
     def _respond(
         self, request: AssistantRequest, decision: IntentDecision, on_event: EventHandler | None
     ) -> AssistantResponse:
-        def reply(
-            kind: ResponseKind, template: templates.Reply, reason: ReplyReason
-        ) -> AssistantResponse:
+        refused = [
+            RefusedPart(topic=topic, message=templates.refused_part(topic))
+            for topic in decision.refused_parts
+        ]
+
+        def build(reply: HandlerReply) -> AssistantResponse:
             return AssistantResponse(
                 request=request,
-                kind=kind,
+                kind=reply.kind,
                 routing=decision,
-                message=template.message,
-                examples=list(template.examples),
-                reason=reason,
+                message=reply.message,
+                answer=reply.answer,
+                refused_parts=refused,
+                examples=list(reply.examples),
+                reason=reply.reason,
             )
 
-        available = HANDLED_INTENTS
         if decision.confidence < self.settings.router_min_confidence:
             question = templates.clarifying_question(
-                decision.intent, available, shift_pinned=request.shift_id is not None
+                decision.intent, shift_pinned=request.shift_id is not None
             )
-            return reply(ResponseKind.CLARIFICATION, question, ReplyReason.LOW_CONFIDENCE)
-        if decision.intent is Intent.HELP:
-            reason = decision.reason or ReplyReason.HELP_REQUEST
-            return reply(ResponseKind.HELP, templates.help_reply(reason, available), reason)
-        if decision.intent in (Intent.OUT_OF_SCOPE, Intent.BLOCKED):
-            if decision.intent is Intent.BLOCKED:
-                reason = ReplyReason.BLOCKED
-            else:
-                reason = decision.reason or ReplyReason.OFF_TOPIC
-            return reply(ResponseKind.REFUSAL, templates.refusal(reason, available), reason)
-        if decision.intent not in available:
-            unavailable = templates.not_available_yet(decision.intent, available)
-            return reply(ResponseKind.HELP, unavailable, ReplyReason.NOT_AVAILABLE_YET)
+            return build(
+                HandlerReply(
+                    ResponseKind.CLARIFICATION,
+                    question.message,
+                    examples=question.examples,
+                    reason=ReplyReason.LOW_CONFIDENCE,
+                )
+            )
+        if (handler := self._handlers.get(decision.intent)) is not None:
+            return build(handler(request.text, decision.entities))
+        if decision.intent is not Intent.FILL_SHIFT:
+            return build(fixed_reply(decision, request.text, self.settings.today))
 
         try:
             staffing = request.staffing_request()
         except ValidationError as exc:  # e.g. text that grew past the limit when normalized
-            error = templates.Reply(templates.input_error(exc))
-            return reply(ResponseKind.REFUSAL, error, ReplyReason.INVALID_REQUEST)
+            return build(
+                HandlerReply(
+                    ResponseKind.REFUSAL,
+                    templates.input_error(exc),
+                    reason=ReplyReason.INVALID_REQUEST,
+                )
+            )
         report = self.run(staffing, on_event)
+        asking = report.status is ReportStatus.NEEDS_CLARIFICATION
         return AssistantResponse(
             request=request,
-            kind=ResponseKind.STAFFING_REPORT,
+            kind=ResponseKind.CLARIFICATION if asking else ResponseKind.STAFFING_REPORT,
             routing=decision,
             message=report.clarification_question or report.summary,
+            refused_parts=refused,
             report=report,
         )
 

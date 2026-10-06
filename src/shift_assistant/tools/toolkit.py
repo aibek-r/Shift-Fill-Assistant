@@ -26,8 +26,10 @@ from shift_assistant.tools.schemas import (
     DraftOutreachArgs,
     EvaluateCandidatesArgs,
     EvaluateCandidatesResult,
+    FacilityInfo,
     FindOpenShiftsArgs,
     FindOpenShiftsResult,
+    GetFacilityInfoArgs,
     OutreachDraft,
     PolicyExcerpt,
     SearchCliniciansArgs,
@@ -174,6 +176,18 @@ class StaffingToolkit:
             )
         draft = self.create_draft(shift, clinician, args.personal_note, evaluation)
         return ToolOutput(draft, EvidenceLedger.of(drafts=[draft], evaluations=[evaluation]))
+
+    # --- Read-only question tools (not offered to the staffing agent) -------------------------
+
+    def get_facility_info(self, args: GetFacilityInfoArgs) -> ToolOutput:
+        """Facility facts from the system of record. Read-only; raises ToolInputError when the
+        name matches no facility or more than one."""
+        matches = self._repository.find_facilities(args.facility)
+        if len(matches) != 1:
+            known = "; ".join(f"{f.name} ({f.id})" for f in self._repository.facilities())
+            problem = "matches no facility" if not matches else "matches several facilities"
+            raise ToolInputError(f"'{args.facility}' {problem}. Known facilities: {known}.")
+        return ToolOutput(FacilityInfo.of(matches[0]), EvidenceLedger())
 
     # --- Domain operations shared with the deterministic fallback ----------------------------
 

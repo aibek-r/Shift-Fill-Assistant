@@ -1,94 +1,21 @@
-"""Fixed replies in simple English: help, refusals, clarifying questions and input errors.
+"""Every fixed text the assistant shows, in simple English.
 
-Code picks a template; no model writes or edits these texts. Examples come from the mock data, so
-every one of them works (tests check that each routes to its intent).
+Code picks a template and fills in values taken from records (shift IDs, facility names, dates).
+No model writes or edits these texts. The example requests come from the mock data, so each one
+works; tests check that they route to a working handler.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from datetime import date
 
 from pydantic import ValidationError
 
-from shift_assistant.contracts import MAX_MESSAGE_CHARS, Intent, ReplyReason
-from shift_assistant.domain.models import Unit
-
-
-@dataclass(frozen=True)
-class Capability:
-    can: str  # completes "I can ..."
-    cannot_yet: str  # completes "I can't ... yet"
-    example: str
-
-
-CAPABILITIES: dict[Intent, Capability] = {
-    Intent.FILL_SHIFT: Capability(
-        "find and check nurses for an open shift, and draft messages for you to review",
-        "fill shifts",
-        "Find two ICU nurses for the St. Mary's night shift on October 14.",
-    ),
-    Intent.SHIFT_LOOKUP: Capability(
-        "list open shifts",
-        "look up open shifts",
-        "What shifts are open at St. Mary's?",
-    ),
-    Intent.CREDENTIAL_CHECK: Capability(
-        "show licenses and certifications that expire soon",
-        "check expiring credentials",
-        "Whose ACLS expires in the next 30 days?",
-    ),
-    Intent.ELIGIBILITY_CHECK: Capability(
-        "check if a nurse can work a shift",
-        "check if one nurse can work a shift",
-        "Can Maria Santos work SHF-1001?",
-    ),
-    Intent.POLICY_QUESTION: Capability(
-        "answer questions from facility policies, with sources",
-        "answer policy questions",
-        "Where do night nurses park at St. Mary's?",
-    ),
-}
-
-ABOUT = "I'm the Shift Fill Assistant. I help staffing coordinators fill open shifts."
-SAFETY_NOTE = (
-    "I only make suggestions. You review every result, and I never send messages or book shifts."
-)
-_GREETING = "Hi! " + ABOUT
-_THANKS = "You're welcome. Is there anything else I can help with?"
-
-_REFUSALS = {
-    ReplyReason.OFF_TOPIC: "Sorry, I can't help with that. I can only help with staffing tasks.",
-    ReplyReason.CLINICAL_ADVICE: (
-        "Sorry, I can't give medical or clinical advice. Please ask a clinician or your "
-        "facility's clinical lead."
-    ),
-    ReplyReason.LEGAL_ADVICE: (
-        "Sorry, I can't give legal advice. Please ask your legal or compliance team."
-    ),
-}
-BLOCKED = "Sorry, I can't help with that request."
-
-_CLARIFYING_QUESTIONS = {
-    Intent.FILL_SHIFT: (
-        "Do you want me to find nurses for a shift? If so, please tell me the facility, unit "
-        "and date."
-    ),
-    Intent.SHIFT_LOOKUP: "Do you want me to list open shifts? If so, for which facility or dates?",
-    Intent.CREDENTIAL_CHECK: (
-        "Do you want to see credentials that expire soon? If so, which credential and how many "
-        "days ahead?"
-    ),
-    Intent.ELIGIBILITY_CHECK: (
-        "Do you want me to check if a nurse can work a shift? If so, please tell me the nurse's "
-        "name and the shift."
-    ),
-    Intent.POLICY_QUESTION: "Is this a question about a facility policy? If so, which facility?",
-}
-_CLARIFY_PINNED_SHIFT = (
-    "Do you want me to find nurses for the shift you selected? If so, how many do you need?"
-)
-_CLARIFY_DEFAULT = "Sorry, I'm not sure what you need. Could you say it like one of the examples?"
+from shift_assistant.contracts import MAX_MESSAGE_CHARS, Intent, RefusedTopic
+from shift_assistant.domain.models import CredentialType, Unit
+from shift_assistant.tools.outreach import unit_label
 
 
 @dataclass(frozen=True)
@@ -97,46 +24,242 @@ class Reply:
     examples: tuple[str, ...] = ()
 
 
-def help_reply(reason: ReplyReason | None, available: Sequence[Intent]) -> Reply:
-    if reason is ReplyReason.THANKS:
-        return Reply(_THANKS, examples(available))
-    intro = _GREETING if reason is ReplyReason.GREETING else ABOUT
-    return Reply(f"{intro}\n\n{capability_list(available)}\n\n{SAFETY_NOTE}", examples(available))
+EXAMPLES = (
+    "Find two ICU nurses for the St. Mary's night shift on October 14.",
+    "What shifts are open?",
+    "Where do agency nurses park at St. Mary's?",
+)
+
+# --- Help and small talk -------------------------------------------------------------------------
+
+HELP = (
+    "I help staffing coordinators. I can find open shifts, check nurses for a shift, answer "
+    "questions about facility policies, check credentials, and draft messages for you to review."
+)
+EMPTY = "Please type a request."
+THANKS = "You're welcome. Anything else?"
+IDENTITY = "I'm the Shift Fill Assistant, an internal staffing tool."
+SYSTEM_QUESTION = (
+    "I'm the Shift Fill Assistant. I can find open shifts, check nurses for a shift, answer "
+    "questions about facility policies, check credentials, and draft messages for you to review. "
+    "I don't share technical details about how I work."
+)
+NOT_UNDERSTOOD = "I didn't understand."
+
+# --- Refusals ------------------------------------------------------------------------------------
+
+OUT_OF_SCOPE = (
+    "Sorry, I can only help with shift staffing: open shifts, nurse credentials and eligibility, "
+    "facility policies, and outreach drafts."
+)
+OUT_OF_SCOPE_EXAMPLES = EXAMPLES[:2]
+MEDICAL_LEGAL = (
+    "I can't give medical or legal advice. Please ask a clinician, your manager, or your legal "
+    "team."
+)
+INVALID_LICENSE_NOTE = "The system will not recommend nurses with invalid licenses."
+ACTION_NOT_ALLOWED = (
+    "I can't book shifts, send messages, or change data. I can prepare a shortlist and draft "
+    "messages for you to review and send."
+)
+CREDENTIAL_UPDATE_NOTE = "Please update it in the credentials system."
+PAY_OR_CONTRACT = "I can't share pay, bill rates, or contract terms."
+BULK_EXPORT = (
+    "I can't export data in bulk. I can export a single report as JSON from Technical details."
+)
+AUDIT_DATA = "I can't share usage or audit data. Only admins can see it."
+BLOCKED = "Sorry, I can't help with that request."
+ELIGIBILITY_RULES_NOTE = "Eligibility rules always apply."
+
+_TOPIC_LABELS = {
+    RefusedTopic.WEATHER: "the weather",
+    RefusedTopic.SPORTS: "sports",
+    RefusedTopic.ENTERTAINMENT: "movies, music or games",
+    RefusedTopic.CREATIVE_WRITING: "creative writing",
+    RefusedTopic.FOOD: "food or restaurants",
+    RefusedTopic.FINANCE: "finance",
+    RefusedTopic.NEWS_AND_POLITICS: "news or politics",
+    RefusedTopic.TRANSLATION: "translation",
+    RefusedTopic.CODE: "code",
+    RefusedTopic.MATH: "math",
+    RefusedTopic.TRAVEL: "travel",
+    RefusedTopic.GENERAL_KNOWLEDGE: "general knowledge questions",
+}
 
 
-def refusal(reason: ReplyReason | None, available: Sequence[Intent]) -> Reply:
-    if reason is ReplyReason.BLOCKED:
-        return Reply(BLOCKED)
-    text = _REFUSALS.get(reason or ReplyReason.OFF_TOPIC, _REFUSALS[ReplyReason.OFF_TOPIC])
-    return Reply(f"{text}\n\n{capability_list(available)}", examples(available))
+def refused_part(topic: RefusedTopic) -> str:
+    """One line for a declined part of a mixed message."""
+    if topic in (RefusedTopic.MEDICAL_ADVICE, RefusedTopic.LEGAL_ADVICE):
+        return MEDICAL_LEGAL
+    if topic is RefusedTopic.ACTION:
+        return ACTION_NOT_ALLOWED
+    return f"I can't help with {_TOPIC_LABELS[topic]}."
 
 
-def clarifying_question(
-    intent: Intent, available: Sequence[Intent], *, shift_pinned: bool = False
-) -> Reply:
-    """One short question about the likely intent, or a general one when the guess is not an
-    intent the assistant can handle yet."""
-    if intent not in available:
-        return Reply(_CLARIFY_DEFAULT, examples(available))
+# --- Questions -----------------------------------------------------------------------------------
+
+NON_ENGLISH = "Sorry, I can only read English. Please write your request in English."
+FOLLOW_UP_GENERIC = "I don't remember earlier messages yet. Please write the full request."
+_CLARIFYING_QUESTIONS = {
+    Intent.FILL_SHIFT: (
+        "Do you want me to find nurses for a shift? If so, please tell me the facility, unit "
+        "and date."
+    ),
+    Intent.SHIFT_LOOKUP: "Do you want me to list open shifts? If so, for which facility or dates?",
+    Intent.POLICY_QUESTION: "Is this a question about a facility policy? If so, which facility?",
+    Intent.FACILITY_INFO: "Is this a question about a facility? If so, which one?",
+}
+_CLARIFY_PINNED_SHIFT = (
+    "Do you want me to find nurses for the shift you selected? If so, how many do you need?"
+)
+_CLARIFY_DEFAULT = "Sorry, I'm not sure what you need. Could you say it like one of the examples?"
+
+
+def clarifying_question(intent: Intent, *, shift_pinned: bool = False) -> Reply:
+    """One short question about the likely intent, or a general one."""
     if intent is Intent.FILL_SHIFT and shift_pinned:
-        return Reply(_CLARIFY_PINNED_SHIFT, examples(available))
-    return Reply(_CLARIFYING_QUESTIONS.get(intent, _CLARIFY_DEFAULT), examples(available))
+        return Reply(_CLARIFY_PINNED_SHIFT, EXAMPLES)
+    return Reply(_CLARIFYING_QUESTIONS.get(intent, _CLARIFY_DEFAULT), EXAMPLES)
 
 
-def not_available_yet(intent: Intent, available: Sequence[Intent]) -> Reply:
-    can = " or ".join(CAPABILITIES[i].can for i in available)
-    return Reply(
-        f"Sorry, I can't {CAPABILITIES[intent].cannot_yet} yet. Right now I can {can}.",
-        examples(available),
+def follow_up(when: str | None) -> str:
+    """'What would you like for October 16?' while there is no conversation memory."""
+    return f"What would you like for {when}?" if when else FOLLOW_UP_GENERIC
+
+
+_NOT_YET = {
+    Intent.CREDENTIAL_CHECK: "look up credential expiry dates",
+    Intent.ELIGIBILITY_CHECK: "check one named nurse against a shift",
+}
+
+
+def not_available_yet(intent: Intent) -> Reply:
+    can_not = _NOT_YET.get(intent, "answer this kind of question")
+    return Reply(f"Sorry, I can't {can_not} yet.", EXAMPLES)
+
+
+# --- Shift answers -------------------------------------------------------------------------------
+
+SHIFT_COLUMNS = ["Shift", "Facility", "Unit", "Date", "Time", "Day/night", "Open places"]
+HARDEST_COLUMNS = ["Shift", "Facility", "Unit", "Date", "Open places", "Eligible nurses"]
+NEXT_SHIFTS = "The next open shifts are listed below."
+ELIGIBLE_COUNT_NOTE = (
+    "Eligible nurses are counted with the same eligibility rules used for staffing."
+)
+
+
+def shift_not_found(shift_id: str) -> str:
+    return f'I couldn\'t find shift {shift_id}. Ask "What shifts are open?" to see the list.'
+
+
+def open_shifts(count: int, kind: str, scope: str) -> str:
+    """E.g. 'There is 1 open night shift at St. Mary's Medical Center.'"""
+    what = f"{kind} {_plural(count, 'shift')}" if kind else _plural(count, "shift")
+    return f"There {_is_are(count)} {count} open {what}{scope}."
+
+
+def no_open_shifts(kind: str, scope: str) -> str:
+    """E.g. 'No open shifts this week (Sep 28 to Oct 4).' or 'No open shifts on Dec 25.'"""
+    return f"No open {kind + ' ' if kind else ''}shifts{scope}."
+
+
+def open_places(shift_id: str, places: int) -> str:
+    return f"{shift_id} has {places} open {_plural(places, 'place')}."
+
+
+def shift_times(shift_id: str, what: str, start: str, end: str, timezone: str) -> str:
+    return f"{shift_id} ({what}) starts {start} and ends {end} ({timezone})."
+
+
+def hardest_to_fill(shift_ids: Sequence[str], eligible: int, places: int) -> str:
+    who = " and ".join(shift_ids)
+    verb = "is" if len(shift_ids) == 1 else "are"
+    nurses = f"{eligible} eligible {_plural(eligible, 'nurse')}"
+    return (
+        f"{who} {verb} the hardest to fill: {nurses} for {places} open {_plural(places, 'place')}."
     )
 
 
-def capability_list(available: Sequence[Intent]) -> str:
-    return "I can:\n" + "\n".join(f"- {CAPABILITIES[intent].can}" for intent in available)
+# --- Facility answers ----------------------------------------------------------------------------
+
+REQUIREMENT_COLUMNS = ["Unit", "Required credentials", "Minimum experience"]
 
 
-def examples(available: Sequence[Intent]) -> tuple[str, ...]:
-    return tuple(CAPABILITIES[intent].example for intent in available)
+def facility_not_found(name: str, known: Iterable[str]) -> str:
+    return f"{name} is not in the system. Known facilities: {', '.join(known)}."
+
+
+def which_facility(known: Iterable[str]) -> str:
+    return f"Which facility do you mean? Known facilities: {', '.join(known)}."
+
+
+def compact_license(name: str, accepted: bool, state: str) -> str:
+    if accepted:
+        return f"Yes. {name} accepts multistate compact RN licenses."
+    return (
+        f"No. {name} does not accept multistate compact RN licenses. Nurses need an RN license "
+        f"valid in {state}."
+    )
+
+
+def rest_hours(name: str, hours: int) -> str:
+    return f"{name} requires at least {hours} hours of rest between shifts."
+
+
+def unit_requirements(
+    name: str, unit: Unit, credentials: Sequence[CredentialType], years: int
+) -> str:
+    return (
+        f"The {name} {unit_label(unit)} unit requires {credential_list(credentials)}, and at "
+        f"least {years} {_plural(years, 'year')} of experience."
+    )
+
+
+def requirements_by_unit(name: str) -> str:
+    return f"Requirements by unit at {name}:"
+
+
+def unit_not_at_facility(name: str, unit: Unit, units: Sequence[Unit]) -> str:
+    return (
+        f"{name} has no {unit_label(unit)} unit in the system. Its units are "
+        f"{_join(unit_label(u) for u in units)}."
+    )
+
+
+def facility_units(name: str, units: Sequence[Unit]) -> str:
+    return f"{name} has these units: {_join(unit_label(u) for u in units)}."
+
+
+def facility_overview(name: str, city: str, state: str, timezone: str) -> str:
+    return f"{name} is in {city}, {state} (time zone {timezone})."
+
+
+def overview_items(units: Sequence[Unit], compact: bool, rest: int) -> list[str]:
+    return [
+        f"Units: {_join(unit_label(u) for u in units)}",
+        f"Compact RN licenses: {'accepted' if compact else 'not accepted'}",
+        f"Minimum rest between shifts: {rest} hours",
+    ]
+
+
+def credential_list(credentials: Iterable[CredentialType]) -> str:
+    return _join(
+        "an RN license" if c is CredentialType.RN_LICENSE else c.value for c in credentials
+    )
+
+
+# --- Policy answers ------------------------------------------------------------------------------
+
+
+def policy_found(scope_name: str, section: str) -> str:
+    return f"From the {scope_name} policies ({section}):"
+
+
+def policy_not_found(scope_name: str) -> str:
+    return f"I couldn't find this in the {scope_name} policies."
+
+
+# --- Input errors --------------------------------------------------------------------------------
 
 
 def input_error(exc: ValidationError) -> str:
@@ -149,7 +272,7 @@ def input_error(exc: ValidationError) -> str:
                 f"Your message is too long. Please keep it under {MAX_MESSAGE_CHARS:,} characters."
             )
         elif field == "text":
-            messages.append("Please type a request.")
+            messages.append(EMPTY)
         elif field == "start_date":
             messages.append("The date must look like 2026-10-14.")
         elif field == "unit":
@@ -159,3 +282,29 @@ def input_error(exc: ValidationError) -> str:
         else:
             messages.append(f"The {field or 'request'} value is not valid.")
     return " ".join(dict.fromkeys(messages))
+
+
+# --- Formatting helpers --------------------------------------------------------------------------
+
+
+def long_date(day: date) -> str:
+    return f"{day:%B} {day.day}"
+
+
+def short_date(day: date) -> str:
+    return f"{day:%b} {day.day}"
+
+
+def _plural(count: int, word: str) -> str:
+    return word if count == 1 else f"{word}s"
+
+
+def _is_are(count: int) -> str:
+    return "is" if count == 1 else "are"
+
+
+def _join(parts: Iterable[str]) -> str:
+    items = list(parts)
+    if len(items) <= 2:
+        return " and ".join(items)
+    return f"{', '.join(items[:-1])}, and {items[-1]}"

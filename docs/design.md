@@ -36,28 +36,56 @@ clarification. The agent is unchanged; such messages no longer reach it.
      message are dropped. It runs once with `ROUTER_TIMEOUT_SECONDS`; any failure or invalid
      output falls through to the keyword rules, and only the exception class is logged.
    - Keyword rules (`keyword_route`), used without an API key or after a router-model failure.
-     Medical-advice and legal-advice patterns come first, then one pattern set per in-scope
-     intent and an off-topic list. One clear match scores 0.85; several in-scope matches, or
-     in-scope plus off-topic, score 0.5-0.6; no match scores 0.4. A pinned shift or typed shift
-     details make a staffing request likely, but a message that names nothing about staffing
-     ("x") still gets a question.
+     They run from the most to the least restrictive: attacks ("ignore all previous
+     instructions", "you are now DAN", "pretend the eligibility rules are off"), questions about
+     the system (tools, schemas, model), business-sensitive data (pay, bill rates, contracts, bulk
+     exports, audit data), actions the assistant may not take (a command verb such as book, send,
+     cancel or change at the start of a clause, aimed at a shift, nurse, message or record),
+     medical and legal advice, then one pattern set per in-scope intent and a list of off-topic
+     topics. One clear in-scope match scores 0.85; several in-scope matches score 0.6 and get a
+     question. Unrecognized text gets "I didn't understand" with examples, a short "and for
+     October 16?" gets a follow-up question (there is no conversation memory yet), and text that
+     looks like another language is asked to be rephrased in English.
 3. **Handler.** Below `ROUTER_MIN_CONFIDENCE` (0.7) the reply is one clarifying question.
    Otherwise:
 
 | Intent | Reply (`kind`) |
 | --- | --- |
-| `help` | Help template: what the assistant can do, with working example requests (`help`) |
-| `out_of_scope` | Polite refusal plus capabilities; medical and legal questions are referred to a clinician or the legal team (`refusal`) |
-| `blocked` | Short refusal (`refusal`) |
-| `fill_shift` | The staffing workflow below, unchanged; its `StaffingReport` is kept whole (`staffing_report`) |
-| `credential_check`, `eligibility_check`, `shift_lookup`, `policy_question` | Recognized, answered with "not available yet" (`help`) until their read-only handlers exist |
+| `fill_shift` | The staffing workflow below, unchanged (`staffing_report`; `clarification` when the workflow asks, with its report attached) |
+| `shift_lookup` | Code-built answer from `find_open_shifts`: a table of open shifts filtered by facility, unit, day or night and dates (explicit, relative or a holiday such as Christmas), open places, start and end times with the facility time zone, or "hardest to fill" counted with the eligibility engine (`answer`) |
+| `facility_info` | Facts from `facilities.json` through the read-only `get_facility_info` tool: compact-license acceptance, minimum rest hours, required credentials per unit, units, an overview; an unknown facility gets "X is not in the system" with the known list (`answer`) |
+| `policy_question` | The section quoted as is, with its citation, from the existing policy search (`answer`; see below) |
+| `credential_check`, `eligibility_check` | Recognized; answered with "not available yet" (`help`) until their handlers exist |
+| `help`, `small_talk` | Help text with three example requests, "You're welcome. Anything else?", "I'm the Shift Fill Assistant, an internal staffing tool.", or a plain-words answer about tools and models that names no tool, schema, model or vendor (`help`) |
+| `out_of_scope` | "Sorry, I can only help with shift staffing ..." plus two example requests (`out_of_scope`) |
+| `medical_legal` | "I can't give medical or legal advice ...", plus a note that invalid licenses are never recommended when the question is about licenses (`refusal`) |
+| `action_not_allowed` | "I can't book shifts, send messages, or change data ...", plus "update it in the credentials system" for credential changes (`refusal`) |
+| `business_sensitive` | Pay and contracts, bulk exports, or audit data, each with its own fixed line (`refusal`) |
+| `blocked` | "Sorry, I can't help with that request.", plus "Eligibility rules always apply." when the attack targets them (`blocked`) |
 
-Every reply other than a staffing report is a fixed template in `templates.py`. The router only
-classifies: router entities are hints for future handlers, and the staffing workflow still
-parses the original text and typed fields, so a routing mistake cannot change which shift is
-staffed. Each response records the routing decision (`routing.method`, `confidence`,
-`fallback_reason`) for evaluation. Logs carry the intent, method and confidence, never the
-message text.
+**Mixed messages** keep one main intent and list the declined parts (`refused_parts`), each
+answered with one fixed line: "Find ICU nurses for Oct 14 and what's the weather?" staffs the
+shift and adds "I can't help with the weather."; "Can we legally cancel a nurse 1 hour before a
+shift?" quotes the cancellation policy and declines the legal part. Command clauses ("... and
+book them") are removed before the in-scope part is classified, so the request is answered and
+the action is declined.
+
+**Policy answers never guess.** The existing search drops excerpts below `retrieval_min_score`.
+On top of that, an excerpt only counts when it shares a meaningful word with the question
+(stopwords, generic staffing words and facility names do not count; "park" matches "parking").
+The best section is quoted as is with its chunk ID; with no match the answer is "I couldn't find
+this in the Bayview policies." This also covers the keyword embedder, whose scores have no
+useful cut-off. With no facility named, all facilities are searched and the best section is
+named with its facility.
+
+Every reply is built by code: a fixed template in `templates.py`, values from records (shift
+IDs, facility names, dates, counts), or quoted policy text. Answers carry `sources`, the IDs of
+the records they were built from. The router only classifies; handlers re-read the message and
+check every entity against the system of record, and the staffing workflow still parses the
+original text and typed fields. Each response records the routing decision (`routing.method`,
+`confidence`, `fallback_reason`). Logs carry the intent, method and confidence, never the
+message text. All text is rendered without HTML in the app (no `unsafe_allow_html`), so a
+script tag in a message or an echoed facility name stays plain text.
 
 ## Architecture and workflow
 
@@ -91,11 +119,12 @@ details and license numbers.
 
 | Area | Modules |
 | --- | --- |
-| Front door | `guards/input_guard.py`, `router.py` (fast rules, router model, keyword rules), `templates.py` (help, refusals, questions, input errors) |
+| Front door | `guards/input_guard.py`, `router.py` (fast rules, router model, keyword rules), `templates.py` (every fixed text) |
+| Read-only answers | `handlers/shifts.py`, `handlers/facilities.py`, `handlers/policies.py`, `handlers/replies.py` (help, small talk, refusals) |
 | Contracts and intent | `contracts.py` (assistant request and response, routing decision, staffing request and report, statuses, provenance), `intent.py` (counts, outreach intent, dates, units, shift period) |
 | Domain and data | `domain/models.py`, `domain/eligibility.py`, `repository.py`, `data/` |
 | Retrieval | `retrieval/embedder.py` (local `bge-small` via fastembed, with a keyword `HashingEmbedder` fallback), `vector_index.py`, `knowledge.py` |
-| Tools | `tools/schemas.py`, `toolkit.py`, `registry.py`, `evidence.py`, `outreach.py` (draft template), `facts.py` (explanations, `period_fit`), `notes.py` (note rules) |
+| Tools | `tools/schemas.py`, `toolkit.py` (agent tools plus the read-only `get_facility_info`), `registry.py`, `evidence.py`, `outreach.py` (draft template), `facts.py` (explanations, `period_fit`), `notes.py` (note rules) |
 | Agent | `agent/graph.py`, `state.py`, `prompts.py`, `submission.py`, `llm.py` (model factory, budget, retries) |
 | Reliability | `reliability/grounding.py`, `completion.py`, `verifier.py`, `reporting.py` (status rules, summaries, rule order), `resolution.py` (fallback shift matching), `fallback.py` |
 | Interfaces | `app/streamlit_app.py`, `cli.py`, `review.py` (edit and approval state), `rendering.py` (Markdown) |

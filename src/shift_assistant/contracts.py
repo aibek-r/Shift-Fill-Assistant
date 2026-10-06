@@ -243,19 +243,26 @@ class AssistantRequest(BaseModel):
 
 
 class Intent(StrEnum):
+    # Answered from the system of record
     FILL_SHIFT = "fill_shift"
-    CREDENTIAL_CHECK = "credential_check"
-    ELIGIBILITY_CHECK = "eligibility_check"
     SHIFT_LOOKUP = "shift_lookup"
     POLICY_QUESTION = "policy_question"
+    FACILITY_INFO = "facility_info"
+    CREDENTIAL_CHECK = "credential_check"  # recognized; no handler yet
+    ELIGIBILITY_CHECK = "eligibility_check"  # recognized; no handler yet
+    # Fixed replies
     HELP = "help"
+    SMALL_TALK = "small_talk"
     OUT_OF_SCOPE = "out_of_scope"
+    MEDICAL_LEGAL = "medical_legal"
+    ACTION_NOT_ALLOWED = "action_not_allowed"
+    BUSINESS_SENSITIVE = "business_sensitive"
     BLOCKED = "blocked"
 
 
 class RoutingMethod(StrEnum):
     INPUT_GUARD = "input_guard"  # blocked before routing; goes straight to the refusal template
-    FAST_RULE = "fast_rule"  # fixed patterns for empty text, greetings and help; no AI
+    FAST_RULE = "fast_rule"  # fixed patterns for empty text, greetings, thanks and help; no AI
     LLM = "llm"  # structured output from the router model
     KEYWORDS = "keywords"  # keyword fallback: no API key, or the router model failed
 
@@ -265,15 +272,44 @@ class ReplyReason(StrEnum):
 
     EMPTY_MESSAGE = "empty_message"
     GREETING = "greeting"
-    THANKS = "thanks"
     HELP_REQUEST = "help_request"
+    THANKS = "thanks"
+    IDENTITY = "identity"  # "who made you?", "are you ChatGPT?"
+    SYSTEM_QUESTION = "system_question"  # tools, schemas, model: answered in plain words only
+    NOT_UNDERSTOOD = "not_understood"
+    NON_ENGLISH = "non_english"
+    FOLLOW_UP = "follow_up"  # "and for October 16?" with no conversation memory
     OFF_TOPIC = "off_topic"
     CLINICAL_ADVICE = "clinical_advice"
     LEGAL_ADVICE = "legal_advice"
+    ACTION_NOT_ALLOWED = "action_not_allowed"
+    PAY_OR_CONTRACT = "pay_or_contract"
+    BULK_EXPORT = "bulk_export"
+    AUDIT_DATA = "audit_data"
     BLOCKED = "blocked"
     LOW_CONFIDENCE = "low_confidence"
     NOT_AVAILABLE_YET = "not_available_yet"
     INVALID_REQUEST = "invalid_request"
+
+
+class RefusedTopic(StrEnum):
+    """A part of a mixed message the assistant declines, e.g. the weather in N3."""
+
+    WEATHER = "weather"
+    SPORTS = "sports"
+    ENTERTAINMENT = "entertainment"
+    CREATIVE_WRITING = "creative_writing"
+    FOOD = "food"
+    FINANCE = "finance"
+    NEWS_AND_POLITICS = "news_and_politics"
+    TRANSLATION = "translation"
+    CODE = "code"
+    MATH = "math"
+    TRAVEL = "travel"
+    GENERAL_KNOWLEDGE = "general_knowledge"
+    MEDICAL_ADVICE = "medical_advice"
+    LEGAL_ADVICE = "legal_advice"
+    ACTION = "action"  # booking, sending or changing data
 
 
 class IntentEntities(BaseModel):
@@ -296,7 +332,10 @@ class IntentDecision(BaseModel):
     confidence: float = Field(ge=0, le=1)
     entities: IntentEntities = Field(default_factory=IntentEntities)
     reason: ReplyReason | None = Field(
-        default=None, description="Finer reason for help, out_of_scope and blocked intents."
+        default=None, description="Finer reason for intents answered with a fixed reply."
+    )
+    refused_parts: tuple[RefusedTopic, ...] = Field(
+        default=(), description="Parts of a mixed message that are declined; the rest is answered."
     )
     method: RoutingMethod
     fallback_reason: str | None = Field(
@@ -308,33 +347,71 @@ class ResponseKind(StrEnum):
     STAFFING_REPORT = "staffing_report"
     ANSWER = "answer"
     CLARIFICATION = "clarification"
-    REFUSAL = "refusal"
     HELP = "help"
+    OUT_OF_SCOPE = "out_of_scope"
+    REFUSAL = "refusal"
+    BLOCKED = "blocked"
+
+
+class AnswerTable(BaseModel):
+    columns: list[str]
+    rows: list[list[str]]
+
+
+class Answer(BaseModel):
+    """A read-only answer built by code from tool results. No model writes any of it."""
+
+    items: list[str] = Field(default=[], description="Facts from the records, one per line.")
+    table: AnswerTable | None = None
+    citations: list[PolicyExcerpt] = Field(default=[], description="Policy text, quoted as is.")
+    sources: list[str] = Field(
+        default=[], description="IDs of the records used: shifts, facilities, policy sections."
+    )
+
+
+class RefusedPart(BaseModel):
+    topic: RefusedTopic
+    message: str = Field(description="Fixed one-line template.")
 
 
 class AssistantResponse(BaseModel):
     """What the coordinator gets back for one message. A staffing run keeps its full
-    `StaffingReport`; every other reply is a fixed template, never model prose."""
+    `StaffingReport`; read-only answers are built from records; every other reply is a fixed
+    template. No model prose is shown."""
 
     request: AssistantRequest
     kind: ResponseKind
     routing: IntentDecision
     message: str = Field(
-        description="Text for the coordinator: a fixed template, or the code-built report summary."
+        description="Text for the coordinator: a fixed template, a sentence built from records, "
+        "or the code-built report summary."
+    )
+    answer: Answer | None = Field(default=None, description="Set for answer responses only.")
+    refused_parts: list[RefusedPart] = Field(
+        default=[], description="Declined parts of a mixed message, shown with the answer."
     )
     examples: list[str] = Field(default=[], description="Example requests the coordinator can try.")
     reason: ReplyReason | None = None
     report: StaffingReport | None = Field(
-        default=None, description="Set for staffing_report responses, and only for them."
+        default=None,
+        description="Set for staffing_report responses; also for a clarification the staffing "
+        "workflow asked.",
     )
     duration_ms: int = 0
 
     @model_validator(mode="after")
-    def _report_matches_kind(self) -> Self:
-        if (self.kind is ResponseKind.STAFFING_REPORT) != (self.report is not None):
-            raise ValueError("a report is required for staffing_report responses, and only there")
+    def _payload_matches_kind(self) -> Self:
+        if self.kind is ResponseKind.STAFFING_REPORT and self.report is None:
+            raise ValueError("a staffing_report response needs a report")
+        if self.report is not None and self.kind not in _REPORT_KINDS:
+            raise ValueError(f"a {self.kind} response cannot carry a staffing report")
+        if (self.kind is ResponseKind.ANSWER) != (self.answer is not None):
+            raise ValueError("an answer is required for answer responses, and only there")
         return self
 
     @property
     def intent(self) -> Intent:
         return self.routing.intent
+
+
+_REPORT_KINDS = frozenset({ResponseKind.STAFFING_REPORT, ResponseKind.CLARIFICATION})
