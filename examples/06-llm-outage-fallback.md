@@ -79,8 +79,8 @@ Staffing Operations Team
 ## Trace
 
 ```text
-[ 1] llm:model FAILED 1ms | Provider failure (ConnectionError)
-[ 2] fallback:rules ok 1ms | LLM call failed (ConnectionError)
+[ 1] llm:model FAILED 2ms | Provider failure (ConnectionError)
+[ 2] fallback:rules ok 8ms | LLM call failed (ConnectionError)
 ```
 
 0 LLM calls, 0 tool calls, token usage unavailable, 0.0s.

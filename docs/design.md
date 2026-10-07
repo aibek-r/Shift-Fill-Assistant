@@ -4,7 +4,7 @@ How the Shift Fill Assistant works, and the decisions and trade-offs behind it. 
 the overview and setup.
 
 Contents: [front door](#front-door-input-guard-and-intent-router) ·
-[architecture and workflow](#architecture-and-workflow) ·
+[detailed flow](#detailed-flow-mermaid) · [architecture and workflow](#architecture-and-workflow) ·
 [boundaries](#what-code-decides-and-what-the-model-decides) ·
 [statuses](#report-status-and-completion-conditions) ·
 [completion and provenance](#deterministic-completion) ·
@@ -86,6 +86,46 @@ original text and typed fields. Each response records the routing decision (`rou
 `confidence`, `fallback_reason`). Logs carry the intent, method and confidence, never the
 message text. All text is rendered without HTML in the app (no `unsafe_allow_html`), so a
 script tag in a message or an echoed facility name stays plain text.
+
+## Detailed flow (Mermaid)
+
+The editable text version of the architecture image in the README
+(`docs/images/architecture-light.svg` and `architecture-dark.svg`). Update the image and these
+diagrams together when the flow changes.
+
+### Front door: guard, router and replies
+
+```mermaid
+flowchart LR
+    M[Message] --> G[Input guard<br/>normalize text]
+    G --> RT{Intent router<br/>fast rules, router model,<br/>keyword fallback}
+    RT -->|help, small_talk| H[Help template]
+    RT -->|out_of_scope, medical_legal,<br/>action_not_allowed,<br/>business_sensitive, blocked| X[Refusal template]
+    RT -->|confidence below 0.7| Q[One clarifying question]
+    RT -->|shift_lookup, facility_info,<br/>policy_question| A[Read-only answer<br/>from records, with sources]
+    RT -->|fill_shift| W[Staffing workflow below]
+```
+
+### Staffing workflow
+
+```mermaid
+flowchart LR
+    U[Coordinator request] --> A
+    subgraph LangGraph workflow
+        A[agent<br/>LLM plans next step] -->|tool calls| T[tools<br/>validated execution]
+        T -->|results + evidence| A
+        A -->|submit_recommendation| V[validate<br/>schema + grounding]
+        V -->|problems, repairs left| A
+        V -->|ok, or repairs used up| C[complete<br/>rules finish vetting,<br/>shortlist and drafts]
+        C --> R[verify<br/>enforce grounding,<br/>build report]
+        A -->|LLM error / step or time budget| F[fallback<br/>rules only]
+        V -->|rejected| F
+    end
+    R --> OUT[StaffingReport]
+    F --> OUT
+    T -.reads.-> DB[(Mock system of record<br/>JSON, validated on load)]
+    T -.searches.-> VEC[(Vector index<br/>policies + profiles)]
+```
 
 ## Architecture and workflow
 

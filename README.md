@@ -19,8 +19,7 @@ workflow above. Questions about open shifts, facility facts and facility policie
 answers built by code from the records, with policy citations. Greetings and "help" get a fixed
 help reply; off-topic messages, medical or legal questions, requests to book or send anything,
 business-sensitive data and prompt attacks get a fixed refusal; unclear messages get one
-question. See
-[the front door](#front-door-guard-router-and-fixed-replies).
+question. See [Architecture](#architecture).
 
 > Senior AI Engineer take-home for Florence Healthcare, by
 > [Aibek Rysbek](https://github.com/aibek-r).
@@ -60,70 +59,42 @@ not running):
 
 ## Architecture
 
-### Front door: guard, router and fixed replies
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/architecture-dark.svg">
+  <img alt="Shift Fill Assistant architecture: every message passes an input guard and an intent router; staffing requests run a LangGraph agent with validate, complete, verify and a rule-based fallback" src="docs/images/architecture-light.svg" width="900">
+</picture>
 
-```mermaid
-flowchart LR
-    M[Message] --> G[Input guard<br/>normalize text]
-    G --> RT{Intent router<br/>fast rules, router model,<br/>keyword fallback}
-    RT -->|help, small_talk| H[Help template]
-    RT -->|out_of_scope, medical_legal,<br/>action_not_allowed,<br/>business_sensitive, blocked| X[Refusal template]
-    RT -->|confidence below 0.7| Q[One clarifying question]
-    RT -->|shift_lookup, facility_info,<br/>policy_question| A[Read-only answer<br/>from records, with sources]
-    RT -->|fill_shift| W[Staffing workflow below]
-```
+1. **Input guard** cleans hidden and control characters from the message.
+2. **Intent router** picks one intent: fast rules first, then the router model, then keyword
+   rules when there is no API key or the model fails.
+3. **Fixed replies** answer help, small talk, refusals and blocked messages from templates.
+4. **Clarifying question:** when the router is less than 70% sure, it asks one short question.
+5. **Read-only answers** for shifts, facility facts and policies are built by code, with sources.
+6. **Agent:** for a staffing request, the LLM plans tool calls and ranks eligible nurses.
+7. **Validate** checks schema and grounding and sends problems back, up to 2 repairs. With no
+   model, a model error, a spent budget or a rejected answer, the rule-based fallback takes over.
+8. **Complete** uses rules to finish vetting, the shortlist and drafts the model skipped.
+9. **Verify** enforces grounding and builds the `StaffingReport`.
 
-`ShiftFillAssistant.ask(AssistantRequest) -> AssistantResponse` is the entry point for the UI and
-CLI. The response has a `kind` (`staffing_report`, `answer`, `clarification`, `refusal` or
-`help`); a staffing run keeps its full `StaffingReport` under `report`, and
-`ShiftFillAssistant.run(StaffingRequest)` still returns that report directly.
-
-- **Fast rules** answer empty text, greetings, thanks and "help" / "what can you do" with no AI.
-- **The router model** (`ROUTER_MODEL`, one structured-output call, no tools) returns an intent,
-  a confidence and entities. Its output is validated, and entities that are not in the message
-  are dropped. The staffing workflow still parses the original text, so a routing error cannot
-  change which shift is staffed.
-- **Keyword rules** stand in without an API key or when the router model fails. Messages that
-  fit several intents, or none, get a low confidence and therefore a question.
-- **No model prose is shown.** Answers are tables and sentences built by code from records
-  (`handlers/`), policy sections quoted as is with their citation, or fixed templates
-  (`templates.py`). A policy question with no matching section gets "I couldn't find this".
-- **Mixed messages** keep one main intent and decline the rest in one line, e.g. a staffing
-  request that also asks about the weather.
-- Credential-expiry and single-nurse eligibility questions are recognized and answered with
-  "not available yet" for now; they are never forced into the staffing workflow.
-
-### Staffing workflow
-
-```mermaid
-flowchart LR
-    U[Coordinator request] --> A
-    subgraph LangGraph workflow
-        A[agent<br/>LLM plans next step] -->|tool calls| T[tools<br/>validated execution]
-        T -->|results + evidence| A
-        A -->|submit_recommendation| V[validate<br/>schema + grounding]
-        V -->|problems, repairs left| A
-        V -->|ok, or repairs used up| C[complete<br/>rules finish vetting,<br/>shortlist and drafts]
-        C --> R[verify<br/>enforce grounding,<br/>build report]
-        A -->|LLM error / step or time budget| F[fallback<br/>rules only]
-        V -->|rejected| F
-    end
-    R --> OUT[StaffingReport]
-    F --> OUT
-    T -.reads.-> DB[(Mock system of record<br/>JSON, validated on load)]
-    T -.searches.-> VEC[(Vector index<br/>policies + profiles)]
-```
+Every path ends in one typed `AssistantResponse`, returned by `ShiftFillAssistant.ask()` and
+shown in the Streamlit app and the CLI (`ShiftFillAssistant.run()` returns the `StaffingReport`
+directly). The AI never writes the text you see, with one exception: the short personal note in
+an outreach draft, which passes content rules and waits for a coordinator's approval. Everything
+else is built by code, quoted from a policy, or a fixed template. The editable Mermaid version
+of this flow is in [docs/design.md](docs/design.md#detailed-flow-mermaid).
 
 | Layer | Module | Responsibility |
 | --- | --- | --- |
-| Front door | `guards/`, `router.py`, `templates.py` | Input normalization, intent routing, fixed help, refusal and clarification text |
+| Front door | `guards/`, `router.py`, `templates.py` | Input cleaning, intent routing, and every fixed reply text |
+| Read-only answers | `handlers/` | Shift, facility and policy answers built from tool results; choice of fixed reply |
+| Contracts | `contracts.py` | Typed request and response models: `AssistantRequest`, `AssistantResponse`, `StaffingReport` |
 | Domain | `domain/` | Typed entities, structured shift preferences, and the **deterministic eligibility engine** |
 | Data | `repository.py` | Loads and validates the JSON "system of record", including referential integrity |
-| Retrieval | `retrieval/` | fastembed embeddings, a cosine vector index with metadata pre-filtering, policy chunking |
-| Tools | `tools/` | Five tools with Pydantic argument schemas, plus a registry that never raises |
-| Agent | `agent/` | LangGraph state machine, prompts, the structured submission, model budget and retries |
+| Retrieval | `retrieval/` | fastembed embeddings (keyword matching if the model cannot load), a cosine vector index with metadata pre-filtering, policy chunking |
+| Tools | `tools/` | Five agent tools with Pydantic argument schemas and a registry that never raises, plus the read-only `get_facility_info` used by answers |
+| Agent | `agent/` | LangGraph state machine, prompts, the structured submission, model factories, budget and retries |
 | Reliability | `reliability/` | Grounding checks, deterministic completion, verifier, status rules, fallback shift resolution, rule-based fallback |
-| Interfaces | `app/streamlit_app.py`, `cli.py` | Streamlit chat view with live progress, review and a trace; CLI printing Markdown or JSON |
+| Interfaces | `app/streamlit_app.py`, `cli.py` | Streamlit page (message form, one answer, outreach review, trace); CLI printing Markdown or JSON |
 | Evaluation | `evals/` | Offline evaluation harness (`python -m evals.run`) |
 
 ## How the assignment requirements are met

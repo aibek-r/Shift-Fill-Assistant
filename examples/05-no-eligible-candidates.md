@@ -23,16 +23,17 @@ All references were verified against tool evidence.
 ## Trace
 
 ```text
-[ 1] llm:model ok 875ms | Planned: find_open_shifts
+[ 1] llm:model ok 972ms | Planned: find_open_shifts
 [ 2] tool:find_open_shifts ok 1ms | {"facility": "Bayview Children's", "unit": "NICU", "start_date": "2026-10-19", "shift_id": null}
-[ 3] llm:model ok 2336ms | Planned: search_facility_policies, search_clinicians
-[ 4] tool:search_facility_policies ok 33ms | {"facility_id": "FAC-003", "query": "NICU unit preferences, day shift arrival logistics, and any outreach rules for Bayview Children's Hospital", "top_k": 4}
-[ 5] tool:search_clinicians ok 24ms | {"shift_id": "SHF-3002", "query": "NICU RN, day shift, neonatal intensive care, Bayview Children's preferences", "limit": 10}
-[ 6] llm:model ok 1341ms | Planned: evaluate_candidates
-[ 7] tool:evaluate_candidates ok 2ms | {"shift_id": "SHF-3002", "clinician_ids": ["C-116", "C-119", "C-120"]}
-[ 8] llm:model ok 2046ms | Planned: submit_recommendation
+[ 3] llm:model ok 1371ms | Planned: search_facility_policies, search_clinicians
+[ 4] tool:search_facility_policies ok 23ms | {"facility_id": "FAC-003", "query": "NICU unit preferences and day shift arrival logistics", "top_k": 5}
+[ 5] tool:search_clinicians ok 28ms | {"shift_id": "SHF-3002", "query": "NICU RN, day shift, neonatal experience, NICU certifications, Bayview Children's preferences", "limit": 10}
+[ 6] llm:model ok 1199ms | Planned: evaluate_candidates
+[ 7] tool:evaluate_candidates ok 0ms | {"shift_id": "SHF-3002", "clinician_ids": ["C-116", "C-119", "C-120"]}
+[ 8] llm:model ok 1414ms | Planned: submit_recommendation
 [ 9] validation:submit_recommendation ok 0ms | Submission accepted.
-[10] verification:grounding ok 0ms | 0 recommendation(s) verified; 0 issue(s) enforced.
+[10] completion:rules ok 0ms | Nothing to complete.
+[11] verification:grounding ok 0ms | 0 recommendation(s) verified; 0 issue(s) enforced.
 ```
 
-4 LLM calls, 4 tool calls, 9153 tokens, 6.7s.
+4 LLM calls, 4 tool calls, 9375 tokens, 5.0s.

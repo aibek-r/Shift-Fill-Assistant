@@ -1,0 +1,235 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="1232" viewBox="0 0 900 1232" role="img" aria-labelledby="title desc">
+  <title id="title">Shift Fill Assistant architecture</title>
+  <desc id="desc">Every message passes an input guard and an intent router. Fixed replies, a clarifying question and read-only answers go straight to the response; staffing requests run a LangGraph agent with validate, complete, verify and a rule-based fallback. Tools read the mock records, the vector index and the eligibility engine.</desc>
+  <style>
+    .bg { fill: #0d1117; }
+    .band { fill: #151b23; stroke: #3d444d; stroke-width: 1; }
+    .box { fill: #0d1117; stroke: #8b949e; stroke-width: 1.5; }
+    .ai { fill: #0c2d57; stroke: #4493f8; stroke-width: 2; }
+    .out { fill: #0d1117; stroke: #3fb950; stroke-width: 2.5; }
+    .store { fill: #0d1117; stroke: #8b949e; stroke-width: 1.5; }
+    .line { fill: none; stroke: #9198a1; stroke-width: 1.6; }
+    .dash { fill: none; stroke: #9198a1; stroke-width: 1.4; stroke-dasharray: 5 4; }
+    .head { fill: #9198a1; }
+    .badge { fill: #e6edf3; }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; fill: #e6edf3; }
+    .h1 { font-size: 17px; font-weight: 600; }
+    .t { font-size: 15px; font-weight: 600; text-anchor: middle; }
+    .t2 { font-size: 14px; font-weight: 600; text-anchor: middle; }
+    .d { font-size: 13px; text-anchor: middle; }
+    .n { font-size: 12px; fill: #9198a1; text-anchor: middle; }
+    .sub { font-size: 12px; fill: #9198a1; }
+    .f { font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-size: 12px; fill: #9198a1; text-anchor: middle; }
+    .lbl { font-size: 14px; fill: #d1d7e0; }
+    .mid { text-anchor: middle; }
+    .key { font-size: 13px; }
+    .band-label { font-size: 12px; font-weight: 700; letter-spacing: 1.2px; fill: #9198a1; }
+    .num { font-size: 12px; font-weight: 700; fill: #0d1117; text-anchor: middle; }
+  </style>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="900" height="1232"/>
+
+  <!-- Title and legend -->
+  <text class="h1" x="24" y="34">Shift Fill Assistant: how a message is answered</text>
+  <text class="sub" x="24" y="54">Numbered steps match the list under the image.</text>
+  <rect class="ai" x="500" y="17" width="22" height="14" rx="3"/>
+  <text class="key" x="528" y="29">AI step (uses a model)</text>
+  <rect class="box" x="690" y="17" width="22" height="14" rx="3"/>
+  <text class="key" x="718" y="29">Code step (deterministic)</text>
+  <path class="store" d="M500,41 a11,3 0 0 1 22,0 v10 a11,3 0 0 1 -22,0 z"/>
+  <path class="store" d="M500,41 a11,3 0 0 0 22,0"/>
+  <text class="key" x="528" y="51">Data store</text>
+  <rect class="out" x="690" y="39" width="22" height="14" rx="3"/>
+  <text class="key" x="718" y="51">Output</text>
+
+  <!-- Band 1: front door -->
+  <rect class="band" x="16" y="62" width="856" height="436" rx="12"/>
+  <text class="band-label" x="32" y="84">FRONT DOOR</text>
+
+  <rect class="box" x="300" y="78" width="300" height="46" rx="23"/>
+  <text class="t" x="450" y="98">Coordinator message</text>
+  <text class="n" x="450" y="115">Streamlit app or CLI, up to 2,000 characters</text>
+
+  <path class="line" d="M450,124 V143" marker-end="url(#arrow)"/>
+
+  <rect class="box" x="300" y="144" width="300" height="68" rx="8"/>
+  <text class="t" x="450" y="167">Input guard</text>
+  <text class="d" x="450" y="185">cleans hidden and control characters</text>
+  <text class="f" x="450" y="203">guards/input_guard.py</text>
+
+  <path class="line" d="M450,212 V231" marker-end="url(#arrow)"/>
+
+  <rect class="box" x="110" y="232" width="680" height="114" rx="8"/>
+  <text class="t" x="450" y="255">Intent router</text>
+  <rect class="box" x="125" y="268" width="190" height="36" rx="6"/>
+  <text class="t2" x="220" y="291">Fast rules</text>
+  <path class="line" d="M315,286 H354" marker-end="url(#arrow)"/>
+  <rect class="ai" x="355" y="268" width="190" height="36" rx="6"/>
+  <text class="t2" x="450" y="291">Router model</text>
+  <path class="line" d="M545,286 H584" marker-end="url(#arrow)"/>
+  <rect class="box" x="585" y="268" width="190" height="36" rx="6"/>
+  <text class="t2" x="680" y="291">Keyword rules</text>
+  <text class="n" x="220" y="322">greetings, help, thanks</text>
+  <text class="n" x="450" y="322">one structured call, no tools</text>
+  <text class="n" x="680" y="322">no API key, or the model fails</text>
+  <text class="f" x="450" y="339">router.py</text>
+
+  <!-- Router fans out to four branches -->
+  <path class="line" d="M450,346 V364 M138,364 H763"/>
+  <path class="line" d="M138,364 V383" marker-end="url(#arrow)"/>
+  <path class="line" d="M355,364 V383" marker-end="url(#arrow)"/>
+  <path class="line" d="M559,364 V383" marker-end="url(#arrow)"/>
+  <path class="line" d="M763,364 V383" marker-end="url(#arrow)"/>
+
+  <rect class="box" x="40" y="384" width="196" height="80" rx="8"/>
+  <text class="t" x="138" y="406">Staffing workflow</text>
+  <text class="d" x="138" y="424">fill_shift: runs the</text>
+  <text class="d" x="138" y="440">LangGraph agent below</text>
+  <text class="f" x="138" y="457">assistant.py: run()</text>
+
+  <rect class="box" x="262" y="384" width="186" height="80" rx="8"/>
+  <text class="t" x="355" y="406">Fixed replies</text>
+  <text class="d" x="355" y="424">help, small talk,</text>
+  <text class="d" x="355" y="440">refusals, blocked</text>
+  <text class="f" x="355" y="457">templates.py</text>
+
+  <rect class="box" x="466" y="384" width="186" height="80" rx="8"/>
+  <text class="t" x="559" y="406">Clarifying question</text>
+  <text class="d" x="559" y="424">one short question when</text>
+  <text class="d" x="559" y="440">confidence &lt; 0.7</text>
+  <text class="f" x="559" y="457">templates.py</text>
+
+  <rect class="box" x="670" y="384" width="186" height="80" rx="8"/>
+  <text class="t" x="763" y="406">Read-only answers</text>
+  <text class="d" x="763" y="424">shifts, facility facts,</text>
+  <text class="d" x="763" y="440">policies with sources</text>
+  <text class="f" x="763" y="457">handlers/</text>
+
+  <!-- Fixed replies, questions and read-only answers go straight to the response -->
+  <path class="line" d="M355,464 V482 M559,464 V482 M763,464 V482 M355,482 H886 V1175 H858" marker-end="url(#arrow)"/>
+
+  <!-- Band 2: staffing workflow -->
+  <rect class="band" x="16" y="512" width="508" height="604" rx="12"/>
+  <text class="band-label" x="156" y="534">STAFFING WORKFLOW (LANGGRAPH)</text>
+
+  <path class="line" d="M138,464 V547" marker-end="url(#arrow)"/>
+
+  <rect class="ai" x="40" y="548" width="196" height="100" rx="8"/>
+  <text class="t" x="138" y="576">Agent</text>
+  <text class="d" x="138" y="595">LLM plans the next step</text>
+  <text class="d" x="138" y="611">and ranks eligible nurses</text>
+  <text class="f" x="138" y="634">agent/graph.py</text>
+
+  <rect class="box" x="336" y="548" width="180" height="64" rx="8"/>
+  <text class="t" x="426" y="571">Tools</text>
+  <text class="d" x="426" y="588">validated arguments</text>
+  <text class="f" x="426" y="604">tools/registry.py</text>
+
+  <path class="line" d="M236,566 H335" marker-end="url(#arrow)"/>
+  <text class="lbl mid" x="286" y="559">tool calls</text>
+  <path class="line" d="M336,590 H237" marker-end="url(#arrow)"/>
+  <text class="lbl mid" x="286" y="607">results +</text>
+  <text class="lbl mid" x="286" y="622">evidence</text>
+
+  <path class="line" d="M236,636 H426 V711" marker-end="url(#arrow)"/>
+  <text class="lbl mid" x="331" y="655">no model, error or budget</text>
+
+  <path class="line" d="M80,648 V703" marker-end="url(#arrow)"/>
+  <text class="lbl" x="88" y="681">submit</text>
+  <path class="line" d="M190,704 V649" marker-end="url(#arrow)"/>
+  <text class="lbl" x="196" y="681">repair</text>
+
+  <rect class="box" x="40" y="704" width="196" height="78" rx="8"/>
+  <text class="t" x="138" y="726">Validate</text>
+  <text class="d" x="138" y="744">schema + grounding;</text>
+  <text class="d" x="138" y="760">repair up to 2 times</text>
+  <text class="f" x="138" y="775">reliability/grounding.py</text>
+
+  <rect class="box" x="336" y="712" width="180" height="78" rx="8"/>
+  <text class="t" x="426" y="734">Rule-based fallback</text>
+  <text class="d" x="426" y="752">same engine and</text>
+  <text class="d" x="426" y="768">templates, no AI</text>
+  <text class="f" x="426" y="783">reliability/fallback.py</text>
+
+  <path class="line" d="M236,748 H335" marker-end="url(#arrow)"/>
+  <text class="lbl mid" x="286" y="741">rejected</text>
+
+  <path class="line" d="M138,782 V817" marker-end="url(#arrow)"/>
+
+  <rect class="box" x="40" y="818" width="196" height="78" rx="8"/>
+  <text class="t" x="138" y="840">Complete</text>
+  <text class="d" x="138" y="858">rules finish skipped</text>
+  <text class="d" x="138" y="874">vetting, shortlist, drafts</text>
+  <text class="f" x="138" y="889">reliability/completion.py</text>
+
+  <path class="line" d="M138,896 V931" marker-end="url(#arrow)"/>
+
+  <rect class="box" x="40" y="932" width="196" height="78" rx="8"/>
+  <text class="t" x="138" y="954">Verify</text>
+  <text class="d" x="138" y="972">enforce grounding,</text>
+  <text class="d" x="138" y="988">build the report</text>
+  <text class="f" x="138" y="1003">reliability/verifier.py</text>
+
+  <path class="line" d="M138,1010 V1045" marker-end="url(#arrow)"/>
+
+  <rect class="box" x="40" y="1046" width="196" height="54" rx="8"/>
+  <text class="t" x="138" y="1068">StaffingReport</text>
+  <text class="n" x="138" y="1087">status, shortlist, drafts</text>
+
+  <path class="line" d="M426,790 V1073 H237" marker-end="url(#arrow)"/>
+
+  <!-- Band 3: data and rules -->
+  <rect class="band" x="536" y="512" width="336" height="368" rx="12"/>
+  <text class="band-label" x="552" y="534">DATA AND RULES</text>
+
+  <path class="dash" d="M516,580 H530 V820"/>
+  <path class="dash" d="M530,594 H555" marker-end="url(#arrow)"/>
+  <path class="dash" d="M530,710 H555" marker-end="url(#arrow)"/>
+  <path class="dash" d="M530,820 H555" marker-end="url(#arrow)"/>
+
+  <path class="store" d="M556,557 a150,9 0 0 1 300,0 v74 a150,9 0 0 1 -300,0 z"/>
+  <path class="store" d="M556,557 a150,9 0 0 0 300,0"/>
+  <text class="t" x="706" y="586">Mock system of record</text>
+  <text class="d" x="706" y="604">JSON: facilities, shifts, nurses,</text>
+  <text class="d" x="706" y="620">bookings; validated on load</text>
+  <text class="f" x="706" y="635">repository.py, data/</text>
+
+  <path class="store" d="M556,673 a150,9 0 0 1 300,0 v74 a150,9 0 0 1 -300,0 z"/>
+  <path class="store" d="M556,673 a150,9 0 0 0 300,0"/>
+  <text class="t" x="706" y="702">Vector index</text>
+  <text class="d" x="706" y="720">policy sections + nurse profiles,</text>
+  <text class="d" x="706" y="736">local bge-small embeddings</text>
+  <text class="f" x="706" y="751">retrieval/</text>
+
+  <rect class="box" x="556" y="780" width="300" height="80" rx="8"/>
+  <text class="t" x="706" y="802">Eligibility engine</text>
+  <text class="d" x="706" y="820">deterministic: license, credentials,</text>
+  <text class="d" x="706" y="836">experience, double booking, rest</text>
+  <text class="f" x="706" y="853">domain/eligibility.py</text>
+
+  <!-- Output -->
+  <path class="line" d="M138,1100 V1135" marker-end="url(#arrow)"/>
+  <rect class="out" x="40" y="1136" width="816" height="78" rx="8"/>
+  <text class="t" x="448" y="1158">AssistantResponse</text>
+  <text class="d" x="448" y="1176">kind: staffing_report, answer, clarification, help, out_of_scope, refusal or blocked</text>
+  <text class="d" x="448" y="1192">shown in the Streamlit app and the CLI</text>
+  <text class="f" x="448" y="1207">contracts.py</text>
+
+  <!-- Step numbers -->
+  <g>
+    <circle class="badge" cx="300" cy="144" r="11"/><text class="num" x="300" y="148">1</text>
+    <circle class="badge" cx="110" cy="232" r="11"/><text class="num" x="110" y="236">2</text>
+    <circle class="badge" cx="262" cy="384" r="11"/><text class="num" x="262" y="388">3</text>
+    <circle class="badge" cx="466" cy="384" r="11"/><text class="num" x="466" y="388">4</text>
+    <circle class="badge" cx="670" cy="384" r="11"/><text class="num" x="670" y="388">5</text>
+    <circle class="badge" cx="40" cy="548" r="11"/><text class="num" x="40" y="552">6</text>
+    <circle class="badge" cx="40" cy="704" r="11"/><text class="num" x="40" y="708">7</text>
+    <circle class="badge" cx="40" cy="818" r="11"/><text class="num" x="40" y="822">8</text>
+    <circle class="badge" cx="40" cy="932" r="11"/><text class="num" x="40" y="936">9</text>
+  </g>
+</svg>

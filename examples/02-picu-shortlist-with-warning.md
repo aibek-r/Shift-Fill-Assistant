@@ -13,15 +13,16 @@
 ### 1. Isabella Garcia (C-116)
 
 Passed the recorded compliance checks for this shift. Recorded experience: 6 years.
-- **Source:** `FAC-003#picu-unit-profile` (PICU unit profile)
-- **Source:** `GLOBAL#candidate-prioritization` (Candidate prioritization)
 
-<details><summary>Outreach draft: Open PICU night shift at Bayview Children's Hospital on Sun, Oct 18</summary>
+- **Selected by:** AI agent
+- **Source:** `FAC-003#picu-unit-profile` (PICU unit profile)
+
+<details><summary>Outreach draft (requested by the AI agent): Open PICU night shift at Bayview Children's Hospital on Sun, Oct 18</summary>
 
 ```text
 Hi Isabella,
 
-We would love to have you on this shift. We think you would fit this unit well.
+We’d be glad to have you support this PICU shift. Thank you for considering it, and we appreciate your interest in helping the team.
 Your recorded experience: 6 years.
 
 Shift details
@@ -38,19 +39,21 @@ Staffing Operations Team
 
 ### 2. Liam Chen (C-117)
 
-Passed the recorded compliance checks for this shift. Recorded experience: 2 years. Profile wording (self-reported): “available for nights”. PALS expires 2026-11-10, 22 days after the shift. Request a renewal.
+Passed the recorded compliance checks for this shift. Recorded experience: 2 years. Self-reported: is open to night shifts. PALS expires 2026-11-10, 22 days after the shift. Request a renewal.
+
+- **Selected by:** AI agent
 - **Warning:** PALS expires 2026-11-10, 22 days after the shift. Request a renewal.
 - **Source:** `FAC-003#picu-unit-profile` (PICU unit profile)
 - **Source:** `GLOBAL#candidate-prioritization` (Candidate prioritization)
 
-<details><summary>Outreach draft: Open PICU night shift at Bayview Children's Hospital on Sun, Oct 18</summary>
+<details><summary>Outreach draft (requested by the AI agent): Open PICU night shift at Bayview Children's Hospital on Sun, Oct 18</summary>
 
 ```text
 Hi Liam,
 
-Would you be interested in this shift? Thank you for considering this opportunity.
+We’d be glad to have you support this PICU shift. Thank you for considering it, and we appreciate your interest in helping the team.
 Your recorded experience: 2 years.
-Your profile states: “available for nights”.
+Your profile says you are open to night shifts.
 
 Shift details
 - Facility: Bayview Children's Hospital (San Diego, CA)
@@ -80,19 +83,21 @@ All references were verified against tool evidence.
 ## Trace
 
 ```text
-[ 1] llm:model ok 1312ms | Planned: find_open_shifts
-[ 2] tool:find_open_shifts ok 1ms | {"facility": "Bayview", "unit": "PICU", "start_date": "2026-10-18", "shift_id": null}
-[ 3] llm:model ok 3077ms | Planned: search_facility_policies, search_clinicians
-[ 4] tool:search_facility_policies ok 26ms | {"facility_id": "FAC-003", "query": "PICU unit preferences and night shift arrival logistics for Bayview Children's Hospital", "top_k": 4}
-[ 5] tool:search_clinicians ok 31ms | {"shift_id": "SHF-3001", "query": "PICU night shift, pediatric critical care, night availability, ventilator or ICU experience", "limit": 10}
-[ 6] llm:model ok 1368ms | Planned: evaluate_candidates
-[ 7] tool:evaluate_candidates ok 1ms | {"shift_id": "SHF-3001", "clinician_ids": ["C-117", "C-116", "C-118"]}
-[ 8] llm:model ok 2191ms | Planned: draft_outreach, draft_outreach
-[ 9] tool:draft_outreach ok 1ms | {"shift_id": "SHF-3001", "clinician_id": "C-116", "personal_note": "We would love to have you on this shift. We think you would fit this unit well."}
-[10] tool:draft_outreach ok 1ms | {"shift_id": "SHF-3001", "clinician_id": "C-117", "personal_note": "Would you be interested in this shift? Thank you for considering this opportunity."}
-[11] llm:model ok 3348ms | Planned: submit_recommendation
-[12] validation:submit_recommendation ok 0ms | Submission accepted.
-[13] verification:grounding ok 1ms | 2 recommendation(s) verified; 0 issue(s) enforced.
+[ 1] llm:model ok 852ms | Planned: find_open_shifts
+[ 2] tool:find_open_shifts ok 0ms | {"facility": "Bayview", "unit": "PICU", "start_date": "2026-10-18", "shift_id": null}
+[ 3] llm:model ok 1692ms | Planned: search_facility_policies
+[ 4] tool:search_facility_policies ok 28ms | {"facility_id": "FAC-003", "query": "PICU unit preferences and night shift arrival logistics for Bayview Children's Hospital", "top_k": 4}
+[ 5] llm:model ok 3031ms | Planned: search_clinicians
+[ 6] tool:search_clinicians ok 19ms | {"shift_id": "SHF-3001", "query": "PICU pediatric critical care ventilator night shift", "limit": 10}
+[ 7] llm:model ok 1675ms | Planned: evaluate_candidates
+[ 8] tool:evaluate_candidates ok 1ms | {"shift_id": "SHF-3001", "clinician_ids": ["C-116", "C-117", "C-118"]}
+[ 9] llm:model ok 4093ms | Planned: draft_outreach, draft_outreach
+[10] tool:draft_outreach ok 5ms | {"shift_id": "SHF-3001", "clinician_id": "C-116", "personal_note": "We\u2019d be glad to have you support this PICU shift. Thank you for considering it, and we appreciate your interest in helping the ...
+[11] tool:draft_outreach ok 5ms | {"shift_id": "SHF-3001", "clinician_id": "C-117", "personal_note": "We\u2019d be glad to have you support this PICU shift. Thank you for considering it, and we appreciate your interest in helping the ...
+[12] llm:model ok 4692ms | Planned: submit_recommendation
+[13] validation:submit_recommendation ok 0ms | Submission accepted.
+[14] completion:rules ok 0ms | Nothing to complete.
+[15] verification:grounding ok 1ms | 2 recommendation(s) verified; 0 issue(s) enforced.
 ```
 
-5 LLM calls, 6 tool calls, 13264 tokens, 11.4s.
+6 LLM calls, 6 tool calls, 16337 tokens, 16.1s.

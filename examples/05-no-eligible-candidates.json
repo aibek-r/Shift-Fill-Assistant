@@ -3,7 +3,10 @@
     "text": "We need a NICU nurse at Bayview Children's for the October 19 day shift.",
     "shift_id": null,
     "requested_count": null,
-    "draft_outreach": true
+    "draft_outreach": true,
+    "facility": null,
+    "unit": null,
+    "start_date": null
   },
   "status": "no_eligible_candidates",
   "mode": "agent",
@@ -129,6 +132,7 @@
     "unevaluated_ids": [],
     "removed_by_verification": 0
   },
+  "completion": null,
   "clarification_question": null,
   "issues": [],
   "trace": [
@@ -138,9 +142,9 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: find_open_shifts",
-      "duration_ms": 875,
-      "input_tokens": 1603,
-      "output_tokens": 59
+      "duration_ms": 972,
+      "input_tokens": 1685,
+      "output_tokens": 42
     },
     {
       "step": 2,
@@ -158,17 +162,17 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: search_facility_policies, search_clinicians",
-      "duration_ms": 2336,
-      "input_tokens": 1776,
-      "output_tokens": 159
+      "duration_ms": 1371,
+      "input_tokens": 1841,
+      "output_tokens": 103
     },
     {
       "step": 4,
       "kind": "tool",
       "name": "search_facility_policies",
       "ok": true,
-      "detail": "{\"facility_id\": \"FAC-003\", \"query\": \"NICU unit preferences, day shift arrival logistics, and any outreach rules for Bayview Children's Hospital\", \"top_k\": 4}",
-      "duration_ms": 33,
+      "detail": "{\"facility_id\": \"FAC-003\", \"query\": \"NICU unit preferences and day shift arrival logistics\", \"top_k\": 5}",
+      "duration_ms": 23,
       "input_tokens": null,
       "output_tokens": null
     },
@@ -177,8 +181,8 @@
       "kind": "tool",
       "name": "search_clinicians",
       "ok": true,
-      "detail": "{\"shift_id\": \"SHF-3002\", \"query\": \"NICU RN, day shift, neonatal intensive care, Bayview Children's preferences\", \"limit\": 10}",
-      "duration_ms": 24,
+      "detail": "{\"shift_id\": \"SHF-3002\", \"query\": \"NICU RN, day shift, neonatal experience, NICU certifications, Bayview Children's preferences\", \"limit\": 10}",
+      "duration_ms": 28,
       "input_tokens": null,
       "output_tokens": null
     },
@@ -188,8 +192,8 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: evaluate_candidates",
-      "duration_ms": 1341,
-      "input_tokens": 2514,
+      "duration_ms": 1199,
+      "input_tokens": 2607,
       "output_tokens": 51
     },
     {
@@ -198,7 +202,7 @@
       "name": "evaluate_candidates",
       "ok": true,
       "detail": "{\"shift_id\": \"SHF-3002\", \"clinician_ids\": [\"C-116\", \"C-119\", \"C-120\"]}",
-      "duration_ms": 2,
+      "duration_ms": 0,
       "input_tokens": null,
       "output_tokens": null
     },
@@ -208,9 +212,9 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: submit_recommendation",
-      "duration_ms": 2046,
-      "input_tokens": 2809,
-      "output_tokens": 182
+      "duration_ms": 1414,
+      "input_tokens": 2902,
+      "output_tokens": 144
     },
     {
       "step": 9,
@@ -224,6 +228,16 @@
     },
     {
       "step": 10,
+      "kind": "completion",
+      "name": "rules",
+      "ok": true,
+      "detail": "Nothing to complete.",
+      "duration_ms": 0,
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "step": 11,
       "kind": "verification",
       "name": "grounding",
       "ok": true,
@@ -236,9 +250,9 @@
   "metrics": {
     "llm_calls": 4,
     "tool_calls": 4,
-    "input_tokens": 8702,
-    "output_tokens": 451,
-    "duration_ms": 6674
+    "input_tokens": 9035,
+    "output_tokens": 340,
+    "duration_ms": 5029
   },
   "outreach_review": null
 }

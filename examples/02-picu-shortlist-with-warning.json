@@ -3,7 +3,10 @@
     "text": "Who can cover the PICU night shift at Bayview on Oct 18? Give me a shortlist of two with outreach drafts.",
     "shift_id": null,
     "requested_count": 2,
-    "draft_outreach": true
+    "draft_outreach": true,
+    "facility": null,
+    "unit": null,
+    "start_date": null
   },
   "status": "ready",
   "mode": "agent",
@@ -27,6 +30,7 @@
       "rank": 1,
       "clinician_id": "C-116",
       "clinician_name": "Isabella Garcia",
+      "selected_by": "model",
       "rationale": "Passed the recorded compliance checks for this shift. Recorded experience: 6 years.",
       "warnings": [],
       "credentials": [
@@ -56,29 +60,24 @@
           "section": "PICU unit profile",
           "text": "PICU unit profile\nThe 28-bed PICU cares for medical, surgical and cardiac pediatric patients. Agency nurses need a California RN license, BLS and PALS, with at least 2 years of pediatric critical care experience. Pediatric ventilator management experience is strongly preferred.",
           "score": 0.7041
-        },
-        {
-          "chunk_id": "GLOBAL#candidate-prioritization",
-          "facility_id": "GLOBAL",
-          "section": "Candidate prioritization",
-          "text": "Candidate prioritization\nWhen several clinicians are eligible, prefer candidates whose experience matches the unit's stated preferences, who have expressed a preference for the shift type (day or night), and whose credentials are not about to expire. Recommend more candidates than open positions only when coordinators asked for a shortlist.",
-          "score": 0.6606
         }
       ],
       "outreach": {
         "draft_id": "DRAFT-SHF-3001-C-116",
         "shift_id": "SHF-3001",
         "clinician_id": "C-116",
-        "personal_note": "We would love to have you on this shift. We think you would fit this unit well.",
+        "personal_note": "We’d be glad to have you support this PICU shift. Thank you for considering it, and we appreciate your interest in helping the team.",
         "subject": "Open PICU night shift at Bayview Children's Hospital on Sun, Oct 18",
-        "body": "Hi Isabella,\n\nWe would love to have you on this shift. We think you would fit this unit well.\nYour recorded experience: 6 years.\n\nShift details\n- Facility: Bayview Children's Hospital (San Diego, CA)\n- Unit: PICU\n- Time: Sun, Oct 18, 2026, 7:00 PM to Mon, Oct 19, 2026, 7:00 AM (America/Los_Angeles)\n\nPlease reply by Fri, Oct 16, 2026, 7:00 PM (America/Los_Angeles) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
-      }
+        "body": "Hi Isabella,\n\nWe’d be glad to have you support this PICU shift. Thank you for considering it, and we appreciate your interest in helping the team.\nYour recorded experience: 6 years.\n\nShift details\n- Facility: Bayview Children's Hospital (San Diego, CA)\n- Unit: PICU\n- Time: Sun, Oct 18, 2026, 7:00 PM to Mon, Oct 19, 2026, 7:00 AM (America/Los_Angeles)\n\nPlease reply by Fri, Oct 16, 2026, 7:00 PM (America/Los_Angeles) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
+      },
+      "outreach_by": "model"
     },
     {
       "rank": 2,
       "clinician_id": "C-117",
       "clinician_name": "Liam Chen",
-      "rationale": "Passed the recorded compliance checks for this shift. Recorded experience: 2 years. Profile wording (self-reported): “available for nights”. PALS expires 2026-11-10, 22 days after the shift. Request a renewal.",
+      "selected_by": "model",
+      "rationale": "Passed the recorded compliance checks for this shift. Recorded experience: 2 years. Self-reported: is open to night shifts. PALS expires 2026-11-10, 22 days after the shift. Request a renewal.",
       "warnings": [
         {
           "code": "CREDENTIAL_EXPIRING_SOON",
@@ -126,10 +125,11 @@
         "draft_id": "DRAFT-SHF-3001-C-117",
         "shift_id": "SHF-3001",
         "clinician_id": "C-117",
-        "personal_note": "Would you be interested in this shift? Thank you for considering this opportunity.",
+        "personal_note": "We’d be glad to have you support this PICU shift. Thank you for considering it, and we appreciate your interest in helping the team.",
         "subject": "Open PICU night shift at Bayview Children's Hospital on Sun, Oct 18",
-        "body": "Hi Liam,\n\nWould you be interested in this shift? Thank you for considering this opportunity.\nYour recorded experience: 2 years.\nYour profile states: “available for nights”.\n\nShift details\n- Facility: Bayview Children's Hospital (San Diego, CA)\n- Unit: PICU\n- Time: Sun, Oct 18, 2026, 7:00 PM to Mon, Oct 19, 2026, 7:00 AM (America/Los_Angeles)\n\nCredential reminder\n- Your PALS expires soon. Please upload your renewal so you stay eligible.\n\nPlease reply by Fri, Oct 16, 2026, 7:00 PM (America/Los_Angeles) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
-      }
+        "body": "Hi Liam,\n\nWe’d be glad to have you support this PICU shift. Thank you for considering it, and we appreciate your interest in helping the team.\nYour recorded experience: 2 years.\nYour profile says you are open to night shifts.\n\nShift details\n- Facility: Bayview Children's Hospital (San Diego, CA)\n- Unit: PICU\n- Time: Sun, Oct 18, 2026, 7:00 PM to Mon, Oct 19, 2026, 7:00 AM (America/Los_Angeles)\n\nCredential reminder\n- Your PALS expires soon. Please upload your renewal so you stay eligible.\n\nPlease reply by Fri, Oct 16, 2026, 7:00 PM (America/Los_Angeles) to confirm your interest.\n\nThank you,\nStaffing Operations Team"
+      },
+      "outreach_by": "model"
     }
   ],
   "alternates": [],
@@ -176,6 +176,7 @@
     "unevaluated_ids": [],
     "removed_by_verification": 0
   },
+  "completion": null,
   "clarification_question": null,
   "issues": [],
   "trace": [
@@ -185,9 +186,9 @@
       "name": "model",
       "ok": true,
       "detail": "Planned: find_open_shifts",
-      "duration_ms": 1312,
-      "input_tokens": 1626,
-      "output_tokens": 51
+      "duration_ms": 852,
+      "input_tokens": 1708,
+      "output_tokens": 41
     },
     {
       "step": 2,
@@ -195,7 +196,7 @@
       "name": "find_open_shifts",
       "ok": true,
       "detail": "{\"facility\": \"Bayview\", \"unit\": \"PICU\", \"start_date\": \"2026-10-18\", \"shift_id\": null}",
-      "duration_ms": 1,
+      "duration_ms": 0,
       "input_tokens": null,
       "output_tokens": null
     },
@@ -204,10 +205,10 @@
       "kind": "llm",
       "name": "model",
       "ok": true,
-      "detail": "Planned: search_facility_policies, search_clinicians",
-      "duration_ms": 3077,
-      "input_tokens": 1791,
-      "output_tokens": 172
+      "detail": "Planned: search_facility_policies",
+      "duration_ms": 1692,
+      "input_tokens": 1863,
+      "output_tokens": 153
     },
     {
       "step": 4,
@@ -215,82 +216,92 @@
       "name": "search_facility_policies",
       "ok": true,
       "detail": "{\"facility_id\": \"FAC-003\", \"query\": \"PICU unit preferences and night shift arrival logistics for Bayview Children's Hospital\", \"top_k\": 4}",
-      "duration_ms": 26,
+      "duration_ms": 28,
       "input_tokens": null,
       "output_tokens": null
     },
     {
       "step": 5,
+      "kind": "llm",
+      "name": "model",
+      "ok": true,
+      "detail": "Planned: search_clinicians",
+      "duration_ms": 3031,
+      "input_tokens": 2379,
+      "output_tokens": 67
+    },
+    {
+      "step": 6,
       "kind": "tool",
       "name": "search_clinicians",
       "ok": true,
-      "detail": "{\"shift_id\": \"SHF-3001\", \"query\": \"PICU night shift, pediatric critical care, night availability, ventilator or ICU experience\", \"limit\": 10}",
-      "duration_ms": 31,
+      "detail": "{\"shift_id\": \"SHF-3001\", \"query\": \"PICU pediatric critical care ventilator night shift\", \"limit\": 10}",
+      "duration_ms": 19,
       "input_tokens": null,
       "output_tokens": null
     },
     {
-      "step": 6,
+      "step": 7,
       "kind": "llm",
       "name": "model",
       "ok": true,
       "detail": "Planned: evaluate_candidates",
-      "duration_ms": 1368,
-      "input_tokens": 2555,
-      "output_tokens": 106
+      "duration_ms": 1675,
+      "input_tokens": 2689,
+      "output_tokens": 54
     },
     {
-      "step": 7,
+      "step": 8,
       "kind": "tool",
       "name": "evaluate_candidates",
       "ok": true,
-      "detail": "{\"shift_id\": \"SHF-3001\", \"clinician_ids\": [\"C-117\", \"C-116\", \"C-118\"]}",
+      "detail": "{\"shift_id\": \"SHF-3001\", \"clinician_ids\": [\"C-116\", \"C-117\", \"C-118\"]}",
       "duration_ms": 1,
       "input_tokens": null,
       "output_tokens": null
     },
     {
-      "step": 8,
+      "step": 9,
       "kind": "llm",
       "name": "model",
       "ok": true,
       "detail": "Planned: draft_outreach, draft_outreach",
-      "duration_ms": 2191,
-      "input_tokens": 2874,
-      "output_tokens": 161
-    },
-    {
-      "step": 9,
-      "kind": "tool",
-      "name": "draft_outreach",
-      "ok": true,
-      "detail": "{\"shift_id\": \"SHF-3001\", \"clinician_id\": \"C-116\", \"personal_note\": \"We would love to have you on this shift. We think you would fit this unit well.\"}",
-      "duration_ms": 1,
-      "input_tokens": null,
-      "output_tokens": null
+      "duration_ms": 4093,
+      "input_tokens": 2963,
+      "output_tokens": 308
     },
     {
       "step": 10,
       "kind": "tool",
       "name": "draft_outreach",
       "ok": true,
-      "detail": "{\"shift_id\": \"SHF-3001\", \"clinician_id\": \"C-117\", \"personal_note\": \"Would you be interested in this shift? Thank you for considering this opportunity.\"}",
-      "duration_ms": 1,
+      "detail": "{\"shift_id\": \"SHF-3001\", \"clinician_id\": \"C-116\", \"personal_note\": \"We\\u2019d be glad to have you support this PICU shift. Thank you for considering it, and we appreciate your interest in helping the ...",
+      "duration_ms": 5,
       "input_tokens": null,
       "output_tokens": null
     },
     {
       "step": 11,
+      "kind": "tool",
+      "name": "draft_outreach",
+      "ok": true,
+      "detail": "{\"shift_id\": \"SHF-3001\", \"clinician_id\": \"C-117\", \"personal_note\": \"We\\u2019d be glad to have you support this PICU shift. Thank you for considering it, and we appreciate your interest in helping the ...",
+      "duration_ms": 5,
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "step": 12,
       "kind": "llm",
       "name": "model",
       "ok": true,
       "detail": "Planned: submit_recommendation",
-      "duration_ms": 3348,
-      "input_tokens": 3517,
-      "output_tokens": 411
+      "duration_ms": 4692,
+      "input_tokens": 3801,
+      "output_tokens": 311
     },
     {
-      "step": 12,
+      "step": 13,
       "kind": "validation",
       "name": "submit_recommendation",
       "ok": true,
@@ -300,7 +311,17 @@
       "output_tokens": null
     },
     {
-      "step": 13,
+      "step": 14,
+      "kind": "completion",
+      "name": "rules",
+      "ok": true,
+      "detail": "Nothing to complete.",
+      "duration_ms": 0,
+      "input_tokens": null,
+      "output_tokens": null
+    },
+    {
+      "step": 15,
       "kind": "verification",
       "name": "grounding",
       "ok": true,
@@ -311,11 +332,11 @@
     }
   ],
   "metrics": {
-    "llm_calls": 5,
+    "llm_calls": 6,
     "tool_calls": 6,
-    "input_tokens": 12363,
-    "output_tokens": 901,
-    "duration_ms": 11383
+    "input_tokens": 15403,
+    "output_tokens": 934,
+    "duration_ms": 16124
   },
   "outreach_review": null
 }
